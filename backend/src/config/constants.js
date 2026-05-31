@@ -1,0 +1,109 @@
+// User roles
+const ROLES = {
+    STUDENT: 'STUDENT',
+    CLASS_COORDINATOR: 'CLASS_COORDINATOR',
+    HOSTEL_OFFICE: 'HOSTEL_OFFICE',
+    CHIEF_WARDEN: 'CHIEF_WARDEN',
+    WATCHMAN: 'WATCHMAN',
+    ADMIN: 'ADMIN'
+};
+
+// User status
+const USER_STATUS = {
+    ACTIVE: 'ACTIVE',
+    INACTIVE: 'INACTIVE',
+    SUSPENDED: 'SUSPENDED'
+};
+
+// Pass status
+const PASS_STATUS = {
+    PENDING: 'PENDING',
+    IN_APPROVAL: 'IN_APPROVAL',
+    PENDING_CLASS_COORDINATOR: 'PENDING_CLASS_COORDINATOR',
+    PENDING_HOSTEL_OFFICE: 'PENDING_HOSTEL_OFFICE',
+    PENDING_CHIEF_WARDEN: 'PENDING_CHIEF_WARDEN',
+    FINAL_APPROVED: 'FINAL_APPROVED', // Hostel Office approved, QR generated
+    APPROVED: 'FINAL_APPROVED',       // Compatibility alias for older code paths
+    EXITED: 'EXITED',                 // Student exited gate
+    OUTSIDE: 'EXITED',                // Compatibility alias for newer naming
+    RETURNED: 'RETURNED',             // Student returned on time
+    COMPLETED: 'RETURNED',            // Compatibility alias for newer naming
+    LATE_RETURN: 'LATE_RETURN',       // Student returned late
+    COMPLETED_LATE: 'LATE_RETURN',    // Compatibility alias for newer naming
+    REJECTED: 'REJECTED',
+    CANCELLED: 'CANCELLED',
+    EXPIRED: 'EXPIRED'
+};
+
+// Approval status
+const APPROVAL_STATUS = {
+    PENDING: 'PENDING',
+    APPROVED: 'APPROVED',
+    REJECTED: 'REJECTED'
+};
+
+// Pass types
+const PASS_TYPES = {
+    HALF_DAY: 'HALF_DAY',
+    HOME_PASS: 'HOME_PASS'
+};
+
+// Entry/Exit action types
+const ACTION_TYPES = {
+    EXIT: 'EXIT',
+    ENTRY: 'ENTRY'
+};
+
+// Notification types
+const NOTIFICATION_TYPES = {
+    PASS_SUBMITTED: 'PASS_SUBMITTED',
+    PASS_APPROVED: 'PASS_APPROVED',
+    PASS_REJECTED: 'PASS_REJECTED',
+    PASS_EXPIRING: 'PASS_EXPIRING',
+    LATE_RETURN: 'LATE_RETURN',
+    SYSTEM: 'SYSTEM'
+};
+
+// Approval workflow
+const APPROVAL_WORKFLOW = {
+    HALF_DAY: [ROLES.HOSTEL_OFFICE],
+    HOME_PASS: [ROLES.CLASS_COORDINATOR, ROLES.HOSTEL_OFFICE]
+};
+
+// HTTP status codes
+const HTTP_STATUS = {
+    OK: 200,
+    CREATED: 201,
+    NO_CONTENT: 204,
+    BAD_REQUEST: 400,
+    UNAUTHORIZED: 401,
+    FORBIDDEN: 403,
+    NOT_FOUND: 404,
+    CONFLICT: 409,
+    UNPROCESSABLE_ENTITY: 422,
+    INTERNAL_SERVER_ERROR: 500
+};
+
+// Error codes
+const ERROR_CODES = {
+    VALIDATION_ERROR: 'VALIDATION_ERROR',
+    AUTHENTICATION_ERROR: 'AUTHENTICATION_ERROR',
+    AUTHORIZATION_ERROR: 'AUTHORIZATION_ERROR',
+    NOT_FOUND: 'NOT_FOUND',
+    DUPLICATE_ENTRY: 'DUPLICATE_ENTRY',
+    DATABASE_ERROR: 'DATABASE_ERROR',
+    INTERNAL_ERROR: 'INTERNAL_ERROR'
+};
+
+module.exports = {
+    ROLES,
+    USER_STATUS,
+    PASS_STATUS,
+    APPROVAL_STATUS,
+    PASS_TYPES,
+    ACTION_TYPES,
+    NOTIFICATION_TYPES,
+    APPROVAL_WORKFLOW,
+    HTTP_STATUS,
+    ERROR_CODES
+};

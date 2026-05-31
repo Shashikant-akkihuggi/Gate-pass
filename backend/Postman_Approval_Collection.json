@@ -1,0 +1,610 @@
+{
+    "info": {
+        "name": "Hostel Gate Pass - Approval Workflow",
+        "description": "Complete API collection for testing the Approval Workflow module",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "auth": {
+        "type": "bearer",
+        "bearer": [
+            {
+                "key": "token",
+                "value": "{{accessToken}}",
+                "type": "string"
+            }
+        ]
+    },
+    "variable": [
+        {
+            "key": "baseUrl",
+            "value": "http://localhost:5000/api/v1",
+            "type": "string"
+        },
+        {
+            "key": "accessToken",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "passId",
+            "value": "",
+            "type": "string"
+        }
+    ],
+    "item": [
+        {
+            "name": "Setup - Login as Coordinator",
+            "event": [
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [
+                            "if (pm.response.code === 200) {",
+                            "    const response = pm.response.json();",
+                            "    pm.collectionVariables.set('accessToken', response.data.accessToken);",
+                            "    console.log('✓ Logged in as Coordinator');",
+                            "    console.log('Access Token:', response.data.accessToken);",
+                            "}"
+                        ],
+                        "type": "text/javascript"
+                    }
+                }
+            ],
+            "request": {
+                "auth": {
+                    "type": "noauth"
+                },
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"email\": \"coordinator@example.com\",\n  \"password\": \"Test@123\"\n}"
+                },
+                "url": {
+                    "raw": "{{baseUrl}}/auth/login",
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "path": [
+                        "auth",
+                        "login"
+                    ]
+                },
+                "description": "Login as CLASS_COORDINATOR to test approval workflow"
+            },
+            "response": []
+        },
+        {
+            "name": "Setup - Login as Hostel Office",
+            "event": [
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [
+                            "if (pm.response.code === 200) {",
+                            "    const response = pm.response.json();",
+                            "    pm.collectionVariables.set('accessToken', response.data.accessToken);",
+                            "    console.log('✓ Logged in as Hostel Office');",
+                            "}"
+                        ],
+                        "type": "text/javascript"
+                    }
+                }
+            ],
+            "request": {
+                "auth": {
+                    "type": "noauth"
+                },
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"email\": \"hostel@example.com\",\n  \"password\": \"Test@123\"\n}"
+                },
+                "url": {
+                    "raw": "{{baseUrl}}/auth/login",
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "path": [
+                        "auth",
+                        "login"
+                    ]
+                },
+                "description": "Login as HOSTEL_OFFICE to test approval workflow"
+            },
+            "response": []
+        },
+        {
+            "name": "Setup - Login as Chief Warden",
+            "event": [
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [
+                            "if (pm.response.code === 200) {",
+                            "    const response = pm.response.json();",
+                            "    pm.collectionVariables.set('accessToken', response.data.accessToken);",
+                            "    console.log('✓ Logged in as Chief Warden');",
+                            "}"
+                        ],
+                        "type": "text/javascript"
+                    }
+                }
+            ],
+            "request": {
+                "auth": {
+                    "type": "noauth"
+                },
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"email\": \"warden@example.com\",\n  \"password\": \"Test@123\"\n}"
+                },
+                "url": {
+                    "raw": "{{baseUrl}}/auth/login",
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "path": [
+                        "auth",
+                        "login"
+                    ]
+                },
+                "description": "Login as CHIEF_WARDEN to test approval workflow"
+            },
+            "response": []
+        },
+        {
+            "name": "1. Get Pending Approvals",
+            "event": [
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [
+                            "if (pm.response.code === 200) {",
+                            "    const response = pm.response.json();",
+                            "    console.log('✓ Pending approvals:', response.data.count);",
+                            "    ",
+                            "    if (response.data.approvals.length > 0) {",
+                            "        const firstPass = response.data.approvals[0];",
+                            "        pm.collectionVariables.set('passId', firstPass.pass_id);",
+                            "        console.log('Pass ID saved:', firstPass.pass_id);",
+                            "        console.log('Student:', firstPass.first_name, firstPass.last_name);",
+                            "        console.log('Pass Type:', firstPass.pass_type_name);",
+                            "    }",
+                            "}"
+                        ],
+                        "type": "text/javascript"
+                    }
+                }
+            ],
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                    "raw": "{{baseUrl}}/approvals/pending",
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "path": [
+                        "approvals",
+                        "pending"
+                    ]
+                },
+                "description": "Get all pending approvals for the logged-in approver"
+            },
+            "response": []
+        },
+        {
+            "name": "2. Get Approval Timeline",
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                    "raw": "{{baseUrl}}/approvals/{{passId}}/timeline",
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "path": [
+                        "approvals",
+                        "{{passId}}",
+                        "timeline"
+                    ]
+                },
+                "description": "Get the complete approval timeline for a pass showing all approval levels and their status"
+            },
+            "response": []
+        },
+        {
+            "name": "3. Approve Pass (with remarks)",
+            "event": [
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [
+                            "if (pm.response.code === 200) {",
+                            "    const response = pm.response.json();",
+                            "    console.log('✓ Pass approved');",
+                            "    console.log('Is Final Approval:', response.data.isFinalApproval);",
+                            "    ",
+                            "    if (response.data.isFinalApproval) {",
+                            "        console.log('✓ QR Code generated');",
+                            "        console.log('QR Code length:', response.data.qrCode ? response.data.qrCode.length : 0);",
+                            "    } else {",
+                            "        console.log('→ Forwarded to next approver');",
+                            "    }",
+                            "}"
+                        ],
+                        "type": "text/javascript"
+                    }
+                }
+            ],
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"remarks\": \"Approved. Valid reason provided.\"\n}"
+                },
+                "url": {
+                    "raw": "{{baseUrl}}/approvals/{{passId}}/approve",
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "path": [
+                        "approvals",
+                        "{{passId}}",
+                        "approve"
+                    ]
+                },
+                "description": "Approve a pass with optional remarks"
+            },
+            "response": []
+        },
+        {
+            "name": "3. Approve Pass (without remarks)",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{}"
+                },
+                "url": {
+                    "raw": "{{baseUrl}}/approvals/{{passId}}/approve",
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "path": [
+                        "approvals",
+                        "{{passId}}",
+                        "approve"
+                    ]
+                },
+                "description": "Approve a pass without remarks (remarks are optional for approval)"
+            },
+            "response": []
+        },
+        {
+            "name": "4. Reject Pass",
+            "event": [
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [
+                            "if (pm.response.code === 200) {",
+                            "    const response = pm.response.json();",
+                            "    console.log('✓ Pass rejected');",
+                            "    console.log('Pass ID:', response.data.passId);",
+                            "}"
+                        ],
+                        "type": "text/javascript"
+                    }
+                }
+            ],
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"remarks\": \"Insufficient reason provided. Please reapply with valid documentation.\"\n}"
+                },
+                "url": {
+                    "raw": "{{baseUrl}}/approvals/{{passId}}/reject",
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "path": [
+                        "approvals",
+                        "{{passId}}",
+                        "reject"
+                    ]
+                },
+                "description": "Reject a pass with mandatory remarks (minimum 10 characters)"
+            },
+            "response": []
+        },
+        {
+            "name": "5. Get Approval History (All)",
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                    "raw": "{{baseUrl}}/approvals/history",
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "path": [
+                        "approvals",
+                        "history"
+                    ]
+                },
+                "description": "Get complete approval history for the logged-in approver"
+            },
+            "response": []
+        },
+        {
+            "name": "5. Get Approval History (Approved Only)",
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                    "raw": "{{baseUrl}}/approvals/history?status=APPROVED&limit=20",
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "path": [
+                        "approvals",
+                        "history"
+                    ],
+                    "query": [
+                        {
+                            "key": "status",
+                            "value": "APPROVED"
+                        },
+                        {
+                            "key": "limit",
+                            "value": "20"
+                        }
+                    ]
+                },
+                "description": "Get only approved passes with limit"
+            },
+            "response": []
+        },
+        {
+            "name": "5. Get Approval History (Rejected Only)",
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                    "raw": "{{baseUrl}}/approvals/history?status=REJECTED",
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "path": [
+                        "approvals",
+                        "history"
+                    ],
+                    "query": [
+                        {
+                            "key": "status",
+                            "value": "REJECTED"
+                        }
+                    ]
+                },
+                "description": "Get only rejected passes"
+            },
+            "response": []
+        },
+        {
+            "name": "5. Get Approval History (Date Range)",
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                    "raw": "{{baseUrl}}/approvals/history?fromDate=2026-05-01&toDate=2026-05-31",
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "path": [
+                        "approvals",
+                        "history"
+                    ],
+                    "query": [
+                        {
+                            "key": "fromDate",
+                            "value": "2026-05-01"
+                        },
+                        {
+                            "key": "toDate",
+                            "value": "2026-05-31"
+                        }
+                    ]
+                },
+                "description": "Get approval history for a specific date range"
+            },
+            "response": []
+        },
+        {
+            "name": "Error - Approve Without Token",
+            "request": {
+                "auth": {
+                    "type": "noauth"
+                },
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"remarks\": \"Test\"\n}"
+                },
+                "url": {
+                    "raw": "{{baseUrl}}/approvals/{{passId}}/approve",
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "path": [
+                        "approvals",
+                        "{{passId}}",
+                        "approve"
+                    ]
+                },
+                "description": "Test authentication error - should return 401"
+            },
+            "response": []
+        },
+        {
+            "name": "Error - Reject Without Remarks",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{}"
+                },
+                "url": {
+                    "raw": "{{baseUrl}}/approvals/{{passId}}/reject",
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "path": [
+                        "approvals",
+                        "{{passId}}",
+                        "reject"
+                    ]
+                },
+                "description": "Test validation error - remarks are required for rejection"
+            },
+            "response": []
+        },
+        {
+            "name": "Error - Reject With Short Remarks",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"remarks\": \"Too short\"\n}"
+                },
+                "url": {
+                    "raw": "{{baseUrl}}/approvals/{{passId}}/reject",
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "path": [
+                        "approvals",
+                        "{{passId}}",
+                        "reject"
+                    ]
+                },
+                "description": "Test validation error - remarks must be at least 10 characters"
+            },
+            "response": []
+        },
+        {
+            "name": "Error - Invalid Pass ID",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"remarks\": \"Test\"\n}"
+                },
+                "url": {
+                    "raw": "{{baseUrl}}/approvals/invalid-uuid/approve",
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "path": [
+                        "approvals",
+                        "invalid-uuid",
+                        "approve"
+                    ]
+                },
+                "description": "Test validation error - invalid UUID format"
+            },
+            "response": []
+        },
+        {
+            "name": "Error - Approve Already Actioned Pass",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"remarks\": \"Test\"\n}"
+                },
+                "url": {
+                    "raw": "{{baseUrl}}/approvals/{{passId}}/approve",
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "path": [
+                        "approvals",
+                        "{{passId}}",
+                        "approve"
+                    ]
+                },
+                "description": "Test idempotency - cannot approve the same pass twice"
+            },
+            "response": []
+        }
+    ]
+}

@@ -1,0 +1,393 @@
+{
+    "info": {
+        "name": "Hostel Gate Pass - Student Passes",
+        "description": "Student pass application API endpoints",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "variable": [
+        {
+            "key": "baseUrl",
+            "value": "http://localhost:5000/api/v1",
+            "type": "string"
+        },
+        {
+            "key": "accessToken",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "passId",
+            "value": "",
+            "type": "string"
+        }
+    ],
+    "item": [
+        {
+            "name": "Auth",
+            "item": [
+                {
+                    "name": "Login as Student",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "if (pm.response.code === 200) {",
+                                    "    const response = pm.response.json();",
+                                    "    pm.collectionVariables.set('accessToken', response.data.tokens.accessToken);",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"student.cse@hostel.edu\",\n  \"password\": \"Test@123\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/auth/login",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "auth",
+                                "login"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Pass Application",
+            "item": [
+                {
+                    "name": "Apply for HALF_DAY Pass",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "if (pm.response.code === 201) {",
+                                    "    const response = pm.response.json();",
+                                    "    pm.collectionVariables.set('passId', response.data.pass.id);",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{accessToken}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"pass_type_id\": 1,\n  \"from_datetime\": \"2026-05-28T10:00:00\",\n  \"to_datetime\": \"2026-05-28T18:00:00\",\n  \"reason\": \"Need to visit home for family function\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/passes/apply",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "passes",
+                                "apply"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Apply for HOME_PASS",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{accessToken}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"pass_type_id\": 2,\n  \"from_datetime\": \"2026-05-30T08:00:00\",\n  \"to_datetime\": \"2026-06-02T20:00:00\",\n  \"reason\": \"Going home for weekend to attend family wedding ceremony\",\n  \"destination\": \"123 Main Street, Home City, State - 123456\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/passes/apply",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "passes",
+                                "apply"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "View Passes",
+            "item": [
+                {
+                    "name": "Get My Passes",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{accessToken}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/passes/my-passes",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "passes",
+                                "my-passes"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Pass Details",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{accessToken}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/passes/{{passId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "passes",
+                                "{{passId}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Pass Statistics",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{accessToken}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/passes/stats",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "passes",
+                                "stats"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Manage Passes",
+            "item": [
+                {
+                    "name": "Cancel Pass",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{accessToken}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"cancellation_reason\": \"Plans changed, no longer need the pass\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/passes/{{passId}}/cancel",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "passes",
+                                "{{passId}}",
+                                "cancel"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Validation Tests",
+            "item": [
+                {
+                    "name": "Apply - Missing Reason",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{accessToken}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"pass_type_id\": 1,\n  \"from_datetime\": \"2026-05-28T10:00:00\",\n  \"to_datetime\": \"2026-05-28T18:00:00\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/passes/apply",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "passes",
+                                "apply"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Apply - Short Reason",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{accessToken}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"pass_type_id\": 1,\n  \"from_datetime\": \"2026-05-28T10:00:00\",\n  \"to_datetime\": \"2026-05-28T18:00:00\",\n  \"reason\": \"Short\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/passes/apply",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "passes",
+                                "apply"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Apply - Past Date",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{accessToken}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"pass_type_id\": 1,\n  \"from_datetime\": \"2020-01-01T10:00:00\",\n  \"to_datetime\": \"2020-01-01T18:00:00\",\n  \"reason\": \"This should fail because date is in the past\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/passes/apply",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "passes",
+                                "apply"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Apply - HOME_PASS Without Destination",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{accessToken}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"pass_type_id\": 2,\n  \"from_datetime\": \"2026-05-30T08:00:00\",\n  \"to_datetime\": \"2026-06-02T20:00:00\",\n  \"reason\": \"Going home but forgot to add destination\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/passes/apply",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "passes",
+                                "apply"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        }
+    ]
+}
