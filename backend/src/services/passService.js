@@ -480,11 +480,8 @@ const requestExtension = async (extensionData) => {
 
     const extensionId = result.insertId;
 
-    // 4. Update pass status to EXTENSION_PENDING
-    await db.query(
-        'UPDATE passes SET current_status = "EXTENSION_PENDING", updated_at = NOW() WHERE id = ?',
-        [passId]
-    );
+    // 4. Do NOT change pass status, just store the extension request
+    // Removed: await db.query('UPDATE passes SET current_status = "EXTENSION_PENDING" ...')
 
     return extensionId;
 };
@@ -553,20 +550,14 @@ const processExtensionApproval = async (extensionId, approverId, role, status, r
     );
 
     if (status === 'APPROVED') {
-        // Update pass return time and status
+        // Update pass return time and keep its current active status (EXITED/OUTSIDE or FINAL_APPROVED)
         await db.query(
-            'UPDATE passes SET to_datetime = ?, current_status = "EXTENDED", updated_at = NOW() WHERE id = ?',
+            'UPDATE passes SET to_datetime = ?, updated_at = NOW() WHERE id = ?',
             [extension.extended_to_datetime, extension.pass_id]
         );
     } else {
-        // Revert pass status to EXITED or FINAL_APPROVED (need to check original state, but usually it's EXITED if they are requesting extension)
-        // For simplicity, let's set it back to what it was. 
-        // We could store the previous status in pass_extensions table if needed.
-        // Assuming it was EXITED if they are outside.
-        await db.query(
-            'UPDATE passes SET current_status = "EXITED", updated_at = NOW() WHERE id = ?',
-            [extension.pass_id]
-        );
+        // If rejected, the pass status remains unchanged (it was never changed by requestExtension)
+        // No action needed for passes table
     }
 };
 

@@ -121,14 +121,16 @@ const getMyPasses = async (req, res) => {
     try {
         const studentId = req.user.id;
 
-        // Get all passes with details
+        // Get all passes with details including extension status
         const [passes] = await db.query(
             `SELECT p.*, 
                     pt.name as pass_type_name, 
                     pt.code as pass_type_code,
                     pt.max_duration_hours,
                     COALESCE(pa.approved_steps, 0) as approved_steps,
-                    COALESCE(pa.total_steps, 0) as total_steps
+                    COALESCE(pa.total_steps, 0) as total_steps,
+                    ex.status as extension_status,
+                    ex.extended_to_datetime as extension_to_datetime
              FROM passes p
              JOIN pass_types pt ON p.pass_type_id = pt.id
              LEFT JOIN (
@@ -138,6 +140,13 @@ const getMyPasses = async (req, res) => {
                  FROM pass_approvals
                  GROUP BY pass_id
              ) pa ON pa.pass_id = p.id
+             LEFT JOIN (
+                 SELECT pass_id, status, extended_to_datetime
+                 FROM pass_extensions
+                 WHERE status = 'PENDING'
+                 ORDER BY created_at DESC
+                 LIMIT 1
+             ) ex ON ex.pass_id = p.id
              WHERE p.student_id = ?
              ORDER BY p.created_at DESC`,
             [studentId]
@@ -546,23 +555,38 @@ const requestExtension = async (req, res) => {
             reason
         });
 
-        // Notify coordinator
+        // Notify coordinator and hostel office
         const [students] = await db.query(
             'SELECT full_name, assigned_coordinator_id FROM students WHERE id = ?',
             [studentId]
         );
 
-        if (students.length > 0 && students[0].assigned_coordinator_id) {
+        if (students.length > 0) {
             const notificationService = require('../services/notificationService');
             const { NOTIFICATION_TYPES } = require('../config/constants');
 
-            await notificationService.createNotification({
-                userId: students[0].assigned_coordinator_id,
-                title: 'Extension Requested',
-                message: `Student ${students[0].full_name} has requested an extension for Pass #${passId}.`,
-                type: NOTIFICATION_TYPES.EXTENSION_REQUESTED,
-                relatedPassId: passId
-            });
+            // 1. Notify Coordinator
+            if (students[0].assigned_coordinator_id) {
+                await notificationService.createNotification({
+                    userId: students[0].assigned_coordinator_id,
+                    title: 'Extension Requested',
+                    message: `Student ${students[0].full_name} has requested an extension for Pass #${passId}.`,
+                    type: NOTIFICATION_TYPES.EXTENSION_REQUESTED,
+                    relatedPassId: passId
+                });
+            }
+
+            // 2. Notify Hostel Office (Users with HOSTEL_OFFICE role)
+            const [hostelStaff] = await db.query('SELECT id FROM users WHERE role = "HOSTEL_OFFICE"');
+            for (const staff of hostelStaff) {
+                await notificationService.createNotification({
+                    userId: staff.id,
+                    title: 'Extension Requested',
+                    message: `Student ${students[0].full_name} has requested an extension for Pass #${passId}.`,
+                    type: NOTIFICATION_TYPES.EXTENSION_REQUESTED,
+                    relatedPassId: passId
+                });
+            }
         }
 
         res.status(201).json({

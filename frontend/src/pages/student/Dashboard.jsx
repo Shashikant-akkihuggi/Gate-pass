@@ -244,7 +244,7 @@ const ActivePassCard = ({ pass, onCancel, onRequestExtension }) => {
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        {['EXITED', 'OUTSIDE', 'EXTENDED'].includes(pass.current_status) && (
+                        {['EXITED', 'OUTSIDE', 'EXTENDED'].includes(pass.current_status) && pass.extension_status !== 'PENDING' && (
                             <Button
                                 variant="outline"
                                 size="sm"
@@ -254,6 +254,11 @@ const ActivePassCard = ({ pass, onCancel, onRequestExtension }) => {
                                 <Plus size={16} className="mr-2" />
                                 Request Extension
                             </Button>
+                        )}
+                        {pass.extension_status === 'PENDING' && (
+                            <div className="px-4 py-2 bg-warning/10 text-warning rounded-xl border border-warning/20 text-xs font-bold flex items-center gap-2">
+                                <Clock size={14} /> Extension Pending
+                            </div>
                         )}
                         {['FINAL_APPROVED', 'APPROVED'].includes(pass.current_status) && (
                             <Button
@@ -554,7 +559,8 @@ const StudentDashboard = () => {
     }
 
     const activePass = recentPasses.find(p =>
-        ['FINAL_APPROVED', 'APPROVED', 'EXITED', 'OUTSIDE', 'IN_APPROVAL', 'PENDING_CLASS_COORDINATOR', 'PENDING_HOSTEL_OFFICE'].includes(p.current_status)
+        ['FINAL_APPROVED', 'APPROVED', 'EXITED', 'OUTSIDE', 'IN_APPROVAL', 'PENDING_CLASS_COORDINATOR', 'PENDING_HOSTEL_OFFICE'].includes(p.current_status) ||
+        p.extension_status === 'PENDING'
     );
 
     return (
