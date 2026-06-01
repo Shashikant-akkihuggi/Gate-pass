@@ -2,7 +2,51 @@ const express = require('express');
 const router = express.Router();
 const { authenticateToken, authorizeRoles } = require('../middleware/authMiddleware');
 const { validatePassApplication, checkActivePasses, checkMonthlyLimit } = require('../middleware/passValidation');
-const { applyPass, getMyPasses, getPassDetails, cancelPass, getPassStats, getPassTypes, downloadPassPDF } = require('../controllers/passController');
+const { 
+    applyPass, 
+    getMyPasses, 
+    getPassDetails, 
+    cancelPass, 
+    getPassStats, 
+    getPassTypes, 
+    downloadPassPDF,
+    requestExtension,
+    getPendingExtensions,
+    processExtensionApproval
+} = require('../controllers/passController');
+
+/**
+ * @route   POST /api/v1/passes/extensions/:id/approve
+ * @desc    Approve or reject extension
+ * @access  Private (COORDINATOR, HOSTEL_OFFICE)
+ */
+router.post('/extensions/:id/approve',
+    authenticateToken,
+    authorizeRoles('CLASS_COORDINATOR', 'HOSTEL_OFFICE'),
+    processExtensionApproval
+);
+
+/**
+ * @route   GET /api/v1/passes/extensions/pending
+ * @desc    Get pending extensions for approver
+ * @access  Private (COORDINATOR, HOSTEL_OFFICE)
+ */
+router.get('/extensions/pending',
+    authenticateToken,
+    authorizeRoles('CLASS_COORDINATOR', 'HOSTEL_OFFICE'),
+    getPendingExtensions
+);
+
+/**
+ * @route   POST /api/v1/passes/:id/extend
+ * @desc    Request pass extension
+ * @access  Private (STUDENT only)
+ */
+router.post('/:id/extend',
+    authenticateToken,
+    authorizeRoles('STUDENT'),
+    requestExtension
+);
 
 /**
  * @route   GET /api/v1/passes/:id/download

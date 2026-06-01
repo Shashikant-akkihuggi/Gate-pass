@@ -27,7 +27,7 @@ const login = async (req, res) => {
         // 1. Try to find in students table by USN
         const [students] = await db.query(
             'SELECT * FROM students WHERE usn = ?',
-            [identifier]
+            [identifier.toUpperCase()]
         );
 
         if (students.length > 0) {
@@ -165,9 +165,9 @@ const register = async (req, res) => {
 
         // Insert student with assigned_coordinator_id
         const [result] = await db.query(
-            `INSERT INTO students (full_name, usn, branch, year, section, mobile, password_hash, assigned_coordinator_id)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [full_name, usn, branch, year, section, mobile, password_hash, assigned_coordinator_id]
+            `INSERT INTO students (full_name, usn, branch, year, section, mobile, password_hash, assigned_coordinator_id, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+            [full_name, usn.toUpperCase(), branch, year, section.toUpperCase(), mobile, password_hash, assigned_coordinator_id]
         );
 
         res.status(201).json({
@@ -209,8 +209,8 @@ const registerCoordinator = async (req, res) => {
 
         // Insert coordinator (handling_year removed)
         const [result] = await db.query(
-            `INSERT INTO coordinators (full_name, mobile_number, department, password_hash)
-             VALUES (?, ?, ?, ?)`,
+            `INSERT INTO coordinators (full_name, mobile_number, department, password_hash, created_at, updated_at)
+             VALUES (?, ?, ?, ?, NOW(), NOW())`,
             [full_name, mobile_number, department, password_hash]
         );
 

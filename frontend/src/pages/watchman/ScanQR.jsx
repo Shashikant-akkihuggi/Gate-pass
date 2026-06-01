@@ -24,6 +24,8 @@ const statusBadge = (status) => {
         COMPLETED_LATE: 'bg-red-100 text-red-700',
         IN_APPROVAL: 'bg-yellow-100 text-yellow-700',
         REJECTED: 'bg-gray-100 text-gray-600',
+        EXTENSION_PENDING: 'bg-yellow-100 text-yellow-700',
+        EXTENDED: 'bg-blue-100 text-blue-700',
     };
     const cls = map[status] || 'bg-gray-100 text-gray-600';
     return (
@@ -164,7 +166,7 @@ const ScanPanel = ({ onSuccess }) => {
     };
 
     const canExit = ['FINAL_APPROVED', 'APPROVED'].includes(preview?.current_status);
-    const canEntry = ['EXITED', 'OUTSIDE'].includes(preview?.current_status);
+    const canEntry = ['EXITED', 'OUTSIDE', 'EXTENDED', 'EXTENSION_PENDING'].includes(preview?.current_status);
 
     return (
         <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">

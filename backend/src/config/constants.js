@@ -30,6 +30,8 @@ const PASS_STATUS = {
     COMPLETED: 'RETURNED',            // Compatibility alias for newer naming
     LATE_RETURN: 'LATE_RETURN',       // Student returned late
     COMPLETED_LATE: 'LATE_RETURN',    // Compatibility alias for newer naming
+    EXTENSION_PENDING: 'EXTENSION_PENDING', // Extension requested, awaiting approval
+    EXTENDED: 'EXTENDED',             // Extension approved
     REJECTED: 'REJECTED',
     CANCELLED: 'CANCELLED',
     EXPIRED: 'EXPIRED'
@@ -37,6 +39,13 @@ const PASS_STATUS = {
 
 // Approval status
 const APPROVAL_STATUS = {
+    PENDING: 'PENDING',
+    APPROVED: 'APPROVED',
+    REJECTED: 'REJECTED'
+};
+
+// Extension status
+const EXTENSION_STATUS = {
     PENDING: 'PENDING',
     APPROVED: 'APPROVED',
     REJECTED: 'REJECTED'
@@ -61,6 +70,9 @@ const NOTIFICATION_TYPES = {
     PASS_REJECTED: 'PASS_REJECTED',
     PASS_EXPIRING: 'PASS_EXPIRING',
     LATE_RETURN: 'LATE_RETURN',
+    EXTENSION_REQUESTED: 'EXTENSION_REQUESTED',
+    EXTENSION_APPROVED: 'EXTENSION_APPROVED',
+    EXTENSION_REJECTED: 'EXTENSION_REJECTED',
     SYSTEM: 'SYSTEM'
 };
 

@@ -98,29 +98,6 @@ const Login = () => {
                         ))}
                     </div>
                 </div>
-
-                {/* Floating Workflow Card */}
-                <motion.div
-                    animate={{ y: [0, -10, 0] }}
-                    transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-                    className="absolute top-20 right-20 p-6 rounded-2xl bg-white border border-slate-200 shadow-xl hidden xl:block"
-                >
-                    <p className="text-slate-900 font-bold text-sm mb-4">Approval Workflow</p>
-                    <div className="flex flex-col gap-3">
-                        {[
-                            { role: 'Student', color: 'bg-blue-500' },
-                            { role: 'Coordinator', color: 'bg-indigo-500' },
-                            { role: 'Hostel Office', color: 'bg-purple-500' },
-                            { role: 'Watchman', color: 'bg-emerald-500' }
-                        ].map((item, i) => (
-                            <div key={i} className="flex items-center gap-3">
-                                <div className={`w-2 h-2 rounded-full ${item.color}`} />
-                                <span className="text-slate-600 text-xs font-semibold">{item.role}</span>
-                                {i < 3 && <div className="ml-auto w-4 h-[1px] bg-slate-100" />}
-                            </div>
-                        ))}
-                    </div>
-                </motion.div>
             </div>
 
             {/* Right Side - Login Form (40%) */}

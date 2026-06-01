@@ -52,4 +52,22 @@ export const passService = {
         });
         return response.data;
     },
+
+    // Request pass extension
+    requestExtension: async (passId, extensionData) => {
+        const response = await api.post(`/passes/${passId}/extend`, extensionData);
+        return response.data;
+    },
+
+    // Get pending extensions
+    getPendingExtensions: async () => {
+        const response = await api.get('/passes/extensions/pending');
+        return response.data;
+    },
+
+    // Process extension approval
+    processExtensionApproval: async (extensionId, decisionData) => {
+        const response = await api.post(`/passes/extensions/${extensionId}/approve`, decisionData);
+        return response.data;
+    },
 };

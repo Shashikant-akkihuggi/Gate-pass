@@ -1,5 +1,5 @@
 const { pool: db } = require('../config/database');
-const { createApprovalWorkflow, getWorkflowSteps, getFirstApproverRole } = require('../services/workflowService');
+const { createApprovalWorkflow, getWorkflowSteps } = require('../services/workflowService');
 const { PASS_STATUS, ROLES } = require('../config/constants');
 const logger = require('../utils/logger');
 const { formatMySQLDateTime } = require('../utils/dateHelper');
@@ -198,7 +198,7 @@ const getPassDetails = async (req, res) => {
         const [approvals] = await db.query(
             `SELECT pa.*, 
                     COALESCE(u.email, c.mobile_number) as approver_email,
-                    COALESCE(st.first_name, c.full_name) as approver_first_name,
+                    COALESCE(st.first_name, c.full_name) as approver_name,
                     COALESCE(st.last_name, '') as approver_last_name
              FROM pass_approvals pa
              LEFT JOIN users u ON pa.approver_id = u.id
@@ -500,12 +500,12 @@ const downloadPassPDF = async (req, res) => {
         doc.font('Helvetica-Bold').fontSize(12).text('APPROVAL STATUS', 50, doc.y);
         doc.moveDown(0.5);
         doc.font('Helvetica').fontSize(10);
-        
+
         approvals.forEach(app => {
             const roleName = app.approver_role.replace(/_/g, ' ');
             doc.text(`${roleName}: ${app.approver_name} (Approved on ${new Date(app.action_taken_at).toLocaleDateString()})`);
         });
-        
+
         doc.moveDown(3);
 
         // Footer / Verification Section
@@ -527,6 +527,122 @@ const downloadPassPDF = async (req, res) => {
     }
 };
 
+/**
+ * @route   POST /api/v1/passes/:id/extend
+ * @desc    Request pass extension
+ * @access  Private (STUDENT only)
+ */
+const requestExtension = async (req, res) => {
+    try {
+        const passId = req.params.id;
+        const studentId = req.user.id;
+        const { extended_to_datetime, reason } = req.body;
+
+        const passService = require('../services/passService');
+        const extensionId = await passService.requestExtension({
+            passId,
+            requestedById: studentId,
+            extendedToDatetime: formatMySQLDateTime(extended_to_datetime),
+            reason
+        });
+
+        // Notify coordinator
+        const [students] = await db.query(
+            'SELECT full_name, assigned_coordinator_id FROM students WHERE id = ?',
+            [studentId]
+        );
+
+        if (students.length > 0 && students[0].assigned_coordinator_id) {
+            const notificationService = require('../services/notificationService');
+            const { NOTIFICATION_TYPES } = require('../config/constants');
+
+            await notificationService.createNotification({
+                userId: students[0].assigned_coordinator_id,
+                title: 'Extension Requested',
+                message: `Student ${students[0].full_name} has requested an extension for Pass #${passId}.`,
+                type: NOTIFICATION_TYPES.EXTENSION_REQUESTED,
+                relatedPassId: passId
+            });
+        }
+
+        res.status(201).json({
+            success: true,
+            message: 'Extension request submitted successfully',
+            data: { extensionId }
+        });
+    } catch (error) {
+        logger.error('Request extension error:', error);
+        res.status(400).json({ success: false, message: error.message });
+    }
+};
+
+/**
+ * @route   GET /api/v1/passes/extensions/pending
+ * @desc    Get pending extensions for approver
+ * @access  Private (COORDINATOR/HOSTEL_OFFICE)
+ */
+const getPendingExtensions = async (req, res) => {
+    try {
+        const approverId = req.user.id;
+        const role = req.user.role;
+
+        const passService = require('../services/passService');
+        const extensions = await passService.getPendingExtensions(approverId, role);
+
+        res.status(200).json({
+            success: true,
+            data: extensions
+        });
+    } catch (error) {
+        logger.error('Get pending extensions error:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch pending extensions' });
+    }
+};
+
+/**
+ * @route   POST /api/v1/passes/extensions/:id/approve
+ * @desc    Approve or reject extension
+ * @access  Private (COORDINATOR/HOSTEL_OFFICE)
+ */
+const processExtensionApproval = async (req, res) => {
+    try {
+        const extensionId = req.params.id;
+        const approverId = req.user.id;
+        const role = req.user.role;
+        const { status, remarks } = req.body;
+
+        const passService = require('../services/passService');
+        await passService.processExtensionApproval(extensionId, approverId, role, status, remarks);
+
+        // Notify student
+        const [extensions] = await db.query(
+            'SELECT pass_id, requested_by_id FROM pass_extensions WHERE id = ?',
+            [extensionId]
+        );
+
+        if (extensions.length > 0) {
+            const notificationService = require('../services/notificationService');
+            const { NOTIFICATION_TYPES } = require('../config/constants');
+
+            await notificationService.createNotification({
+                userId: extensions[0].requested_by_id,
+                title: `Extension ${status.toLowerCase()}`,
+                message: `Your extension request for Pass #${extensions[0].pass_id} has been ${status.toLowerCase()}.`,
+                type: status === 'APPROVED' ? NOTIFICATION_TYPES.EXTENSION_APPROVED : NOTIFICATION_TYPES.EXTENSION_REJECTED,
+                relatedPassId: extensions[0].pass_id
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: `Extension request ${status.toLowerCase()} successfully`
+        });
+    } catch (error) {
+        logger.error('Process extension approval error:', error);
+        res.status(400).json({ success: false, message: error.message });
+    }
+};
+
 module.exports = {
     applyPass,
     getMyPasses,
@@ -534,5 +650,8 @@ module.exports = {
     cancelPass,
     getPassStats,
     getPassTypes,
-    downloadPassPDF
+    downloadPassPDF,
+    requestExtension,
+    getPendingExtensions,
+    processExtensionApproval
 };

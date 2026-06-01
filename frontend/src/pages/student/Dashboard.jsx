@@ -22,6 +22,9 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import StatCard from '../../components/dashboard/StatCard';
 import PassDetailsModal from '../../components/pass/PassDetailsModal';
+import Modal from '../../components/common/Modal';
+import Input from '../../components/common/Input';
+import Textarea from '../../components/common/Textarea';
 import Button from '../../components/common/Button';
 import { passService } from '../../services/passService';
 import { useAuth } from '../../contexts/AuthContext';
@@ -94,6 +97,22 @@ const statusConfig = {
         border: 'border-danger/20',
         label: 'Returned Late',
         step: 4
+    },
+    EXTENSION_PENDING: {
+        icon: Clock,
+        color: 'text-warning',
+        bg: 'bg-warning/10',
+        border: 'border-warning/20',
+        label: 'Extension Pending',
+        step: 3
+    },
+    EXTENDED: {
+        icon: CheckCircle2,
+        color: 'text-primary',
+        bg: 'bg-primary/10',
+        border: 'border-primary/20',
+        label: 'Pass Extended',
+        step: 3
     },
     IN_APPROVAL: {
         icon: Clock,
@@ -184,7 +203,7 @@ const CountdownTimer = ({ toDatetime }) => {
 
 // ── Active Pass Card ──────────────────────────────────────────────────────────
 
-const ActivePassCard = ({ pass, onCancel }) => {
+const ActivePassCard = ({ pass, onCancel, onRequestExtension }) => {
     const [downloading, setDownloading] = useState(false);
     const cfg = statusConfig[pass.current_status] || statusConfig.IN_APPROVAL;
     const Icon = cfg.icon;
@@ -225,6 +244,17 @@ const ActivePassCard = ({ pass, onCancel }) => {
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
+                        {['EXITED', 'OUTSIDE', 'EXTENDED'].includes(pass.current_status) && (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => onRequestExtension(pass)}
+                                className="rounded-xl border-primary text-primary hover:bg-primary/5"
+                            >
+                                <Plus size={16} className="mr-2" />
+                                Request Extension
+                            </Button>
+                        )}
                         {['FINAL_APPROVED', 'APPROVED'].includes(pass.current_status) && (
                             <Button
                                 variant="primary"
@@ -368,6 +398,97 @@ const PassTimeline = ({ currentStep }) => {
     );
 };
 
+// ── Extension Modal Component ───────────────────────────────────────────────────
+
+const ExtensionModal = ({ pass, isOpen, onClose, onSubmitted }) => {
+    const [formData, setFormData] = useState({
+        extended_to_datetime: '',
+        reason: ''
+    });
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        if (pass) {
+            // Default extension: current return time + 4 hours
+            const currentTo = new Date(pass.to_datetime);
+            const defaultExtended = new Date(currentTo.getTime() + 4 * 60 * 60 * 1000);
+
+            // Format for datetime-local input (YYYY-MM-DDThh:mm)
+            const year = defaultExtended.getFullYear();
+            const month = String(defaultExtended.getMonth() + 1).padStart(2, '0');
+            const day = String(defaultExtended.getDate()).padStart(2, '0');
+            const hours = String(defaultExtended.getHours()).padStart(2, '0');
+            const mins = String(defaultExtended.getMinutes()).padStart(2, '0');
+
+            setFormData({
+                extended_to_datetime: `${year}-${month}-${day}T${hours}:${mins}`,
+                reason: ''
+            });
+        }
+    }, [pass]);
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!formData.reason || formData.reason.length < 10) {
+            toast.error('Please provide a reason (at least 10 characters)');
+            return;
+        }
+
+        setLoading(true);
+        try {
+            await passService.requestExtension(pass.id, formData);
+            toast.success('Extension request submitted successfully');
+            onSubmitted();
+            onClose();
+        } catch (error) {
+            toast.error(handleError(error));
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <Modal isOpen={isOpen} onClose={onClose} title="Request Pass Extension" size="md">
+            <form onSubmit={handleSubmit} className="space-y-6">
+                <div className="p-4 bg-primary/5 rounded-2xl border border-primary/10 flex items-start gap-4">
+                    <AlertCircle className="text-primary mt-0.5" size={18} />
+                    <div>
+                        <p className="text-xs font-bold text-primary uppercase tracking-widest">Extension Policy</p>
+                        <p className="text-[11px] text-primary/70 mt-1 leading-relaxed">
+                            Extensions require approval from your Coordinator or the Hostel Office.
+                            Your current return time is {formatDateTime(pass?.to_datetime)}.
+                        </p>
+                    </div>
+                </div>
+
+                <Input
+                    label="New Return Date & Time"
+                    type="datetime-local"
+                    name="extended_to_datetime"
+                    value={formData.extended_to_datetime}
+                    onChange={(e) => setFormData({ ...formData, extended_to_datetime: e.target.value })}
+                    required
+                    icon={Calendar}
+                />
+
+                <Textarea
+                    label="Reason for Extension"
+                    placeholder="Explain why you need additional time..."
+                    value={formData.reason}
+                    onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
+                    required
+                    rows={4}
+                />
+
+                <div className="flex gap-4">
+                    <Button variant="secondary" fullWidth onClick={onClose}>Cancel</Button>
+                    <Button variant="primary" fullWidth type="submit" loading={loading}>Submit Request</Button>
+                </div>
+            </form>
+        </Modal>
+    );
+};
+
 // ── Main Student Dashboard ────────────────────────────────────────────────────
 
 const StudentDashboard = () => {
@@ -375,6 +496,7 @@ const StudentDashboard = () => {
     const [stats, setStats] = useState(null);
     const [recentPasses, setRecentPasses] = useState([]);
     const [selectedPass, setSelectedPass] = useState(null);
+    const [extensionPass, setExtensionPass] = useState(null);
     const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
 
@@ -476,7 +598,7 @@ const StudentDashboard = () => {
                                 <h2 className="text-xs font-black text-text/30 uppercase tracking-[0.2em]">Active Gate Pass</h2>
                                 <span className="w-2 h-2 bg-success rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]"></span>
                             </div>
-                            <ActivePassCard pass={activePass} onCancel={handleCancelPass} />
+                            <ActivePassCard pass={activePass} onCancel={handleCancelPass} onRequestExtension={setExtensionPass} />
                         </section>
                     )}
 
@@ -726,6 +848,13 @@ const StudentDashboard = () => {
                 pass={selectedPass}
                 isOpen={!!selectedPass}
                 onClose={() => setSelectedPass(null)}
+            />
+
+            <ExtensionModal
+                pass={extensionPass}
+                isOpen={!!extensionPass}
+                onClose={() => setExtensionPass(null)}
+                onSubmitted={fetchData}
             />
         </motion.div>
     );
