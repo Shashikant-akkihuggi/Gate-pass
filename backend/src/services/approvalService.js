@@ -84,13 +84,15 @@ const getPendingApprovals = async (approverId, approverRole) => {
     query += ' AND p.current_approval_step = (a.step_order - 1)';
 
     // For Coordinators, only show passes specifically assigned to them
+    // We check both pass_approvals.approver_id AND passes.coordinator_id as a fallback
     if (approverRole === ROLES.CLASS_COORDINATOR) {
-        query += ' AND a.approver_id = ?';
+        query += ' AND (a.approver_id = ? OR p.coordinator_id = ?)';
+        params.push(approverId, approverId);
     } else {
         // For other roles, show if assigned or if it's a general role-based approval
         query += ' AND (a.approver_id = ? OR a.approver_id IS NULL)';
+        params.push(approverId);
     }
-    params.push(approverId);
 
     query += ' ORDER BY p.created_at ASC';
 
@@ -449,11 +451,18 @@ const getApprovalHistory = async (approverId, approverRole, filters = {}) => {
     JOIN passes p ON a.pass_id = p.id
     JOIN pass_types pt ON p.pass_type_id = pt.id
     JOIN students s ON p.student_id = s.id
-    WHERE (a.approver_id = ? OR (a.approver_role = ? AND a.approver_id IS NULL))
-      AND a.status IN ('APPROVED', 'REJECTED')
+    WHERE a.status IN ('APPROVED', 'REJECTED')
   `;
 
-    const params = [approverId, approverRole];
+    const params = [];
+
+    if (approverRole === ROLES.CLASS_COORDINATOR) {
+        query += ' AND (a.approver_id = ? OR p.coordinator_id = ?)';
+        params.push(approverId, approverId);
+    } else {
+        query += ' AND (a.approver_id = ? OR (a.approver_role = ? AND a.approver_id IS NULL))';
+        params.push(approverId, approverRole);
+    }
 
     if (filters.status) {
         query += ' AND a.status = ?';
@@ -526,8 +535,14 @@ const getApprovalStats = async (approverId, approverRole) => {
     }
 
     pendingQuery += ' AND p.current_approval_step = (a.step_order - 1)';
-    pendingQuery += ' AND (a.approver_id = ? OR a.approver_id IS NULL)';
-    pendingParams.push(approverId);
+
+    if (approverRole === ROLES.CLASS_COORDINATOR) {
+        pendingQuery += ' AND (a.approver_id = ? OR p.coordinator_id = ?)';
+        pendingParams.push(approverId, approverId);
+    } else {
+        pendingQuery += ' AND (a.approver_id = ? OR a.approver_id IS NULL)';
+        pendingParams.push(approverId);
+    }
 
     const [pendingRes] = await db.query(pendingQuery, pendingParams);
 

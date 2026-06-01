@@ -60,11 +60,14 @@ const createApprovalWorkflow = async (connection, passId, passTypeId, studentId)
                 if (!coordinatorId) {
                     const [coordinators] = await connection.query(
                         `SELECT id FROM coordinators 
-                         WHERE department = ? 
-                         LIMIT 1`,
+                         WHERE department = ?`,
                         [studentRows[0].branch]
                     );
+                    
                     if (coordinators.length > 0) {
+                        if (coordinators.length > 1) {
+                            logger.warn(`Multiple coordinators found for department ${studentRows[0].branch}. Using the first one (ID: ${coordinators[0].id})`);
+                        }
                         coordinatorId = coordinators[0].id;
                         // Proactively update student record for future passes
                         await connection.query(

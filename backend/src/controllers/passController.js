@@ -87,6 +87,27 @@ const applyPass = async (req, res) => {
             [passId]
         );
 
+        // Notify first approver
+        try {
+            const [firstApprover] = await db.query(
+                'SELECT approver_id FROM pass_approvals WHERE pass_id = ? AND step_order = 1',
+                [passId]
+            );
+
+            if (firstApprover.length > 0 && firstApprover[0].approver_id) {
+                const notificationService = require('../services/notificationService');
+                await notificationService.createNotification({
+                    userId: firstApprover[0].approver_id,
+                    title: 'New Pass for Approval',
+                    message: `${student.full_name} (${student.usn}) has submitted a ${passes[0].pass_type_name} request.`,
+                    type: PASS_STATUS.PENDING,
+                    relatedPassId: passId
+                });
+            }
+        } catch (notifErr) {
+            logger.error('Error sending initial pass notification:', notifErr);
+        }
+
         res.status(201).json({
             success: true,
             message: 'Pass application submitted successfully',

@@ -151,11 +151,9 @@ const register = async (req, res) => {
             return res.status(400).json({ success: false, message: 'USN or Mobile already registered' });
         }
 
-        // Auto-assign coordinator based on Branch (Year removed)
+        // Find assigned coordinator by department
         const [coordinators] = await db.query(
-            `SELECT id FROM coordinators 
-             WHERE department = ? 
-             LIMIT 1`,
+            'SELECT id FROM coordinators WHERE department = ? LIMIT 1',
             [branch]
         );
         const assigned_coordinator_id = coordinators.length > 0 ? coordinators[0].id : null;
@@ -195,13 +193,21 @@ const registerCoordinator = async (req, res) => {
             return res.status(400).json({ success: false, message: 'All fields are required' });
         }
 
-        // Check uniqueness of mobile number
-        const [existing] = await db.query(
+        // Check if mobile number or department already registered
+        const [existingMobile] = await db.query(
             'SELECT id FROM coordinators WHERE mobile_number = ?',
             [mobile_number]
         );
-        if (existing.length > 0) {
+        if (existingMobile.length > 0) {
             return res.status(400).json({ success: false, message: 'Mobile number already registered' });
+        }
+
+        const [existingDept] = await db.query(
+            'SELECT id FROM coordinators WHERE department = ?',
+            [department]
+        );
+        if (existingDept.length > 0) {
+            return res.status(400).json({ success: false, message: `A coordinator is already registered for the ${department} department` });
         }
 
         // Hash password
@@ -216,11 +222,13 @@ const registerCoordinator = async (req, res) => {
 
         res.status(201).json({
             success: true,
-            message: 'Coordinator registration successful',
+            message: 'Coordinator registered successfully',
             data: { id: result.insertId }
         });
+
     } catch (error) {
-        logger.error('Coordinator registration error:', error);
+        console.error("Coordinator Registration Error:", error);
+        logger.error('Register coordinator error:', error);
         res.status(500).json({ success: false, message: 'Coordinator registration failed' });
     }
 };
