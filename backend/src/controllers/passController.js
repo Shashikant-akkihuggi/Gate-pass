@@ -163,14 +163,8 @@ const applyPass = async (req, res) => {
  */
 const getMyPasses = async (req, res) => {
     try {
-        const userId = req.user.id;
-
-        // Get student_id from students table
-        const [studentRows] = await db.query('SELECT id FROM students WHERE user_id = ?', [userId]);
-        if (studentRows.length === 0) {
-            return res.status(404).json({ success: false, message: 'Student profile not found' });
-        }
-        const studentId = studentRows[0].id;
+        // For STUDENT role, req.user.id is already the student ID
+        const studentId = req.user.id;
 
         // Get all passes with details including extension status
         const [passes] = await db.query(
@@ -228,14 +222,8 @@ const getMyPasses = async (req, res) => {
 const getPassDetails = async (req, res) => {
     try {
         const passId = req.params.id;
-        const userId = req.user.id;
-
-        // Get student_id from students table
-        const [studentRows] = await db.query('SELECT id FROM students WHERE user_id = ?', [userId]);
-        if (studentRows.length === 0) {
-            return res.status(404).json({ success: false, message: 'Student profile not found' });
-        }
-        const studentId = studentRows[0].id;
+        // For STUDENT role, req.user.id is already the student ID
+        const studentId = req.user.id;
 
         // Get pass details
         const [passes] = await db.query(
@@ -316,15 +304,9 @@ const getPassDetails = async (req, res) => {
 const cancelPass = async (req, res) => {
     try {
         const passId = req.params.id;
-        const userId = req.user.id;
+        // For STUDENT role, req.user.id is already the student ID
+        const studentId = req.user.id;
         const { cancellation_reason } = req.body;
-
-        // Get student_id from students table
-        const [studentRows] = await db.query('SELECT id FROM students WHERE user_id = ?', [userId]);
-        if (studentRows.length === 0) {
-            return res.status(404).json({ success: false, message: 'Student profile not found' });
-        }
-        const studentId = studentRows[0].id;
 
         // Get pass
         const [passes] = await db.query(
@@ -383,32 +365,25 @@ const cancelPass = async (req, res) => {
  */
 const getPassStats = async (req, res) => {
     try {
-        const userId = req.user.id;
-        console.log('DEBUG: studentId (from userId)', userId);
-
-        // Get student_id from students table
-        const [studentRows] = await db.query('SELECT id FROM students WHERE user_id = ?', [userId]);
-        if (studentRows.length === 0) {
-            console.log(`DEBUG: Student profile not found for user_id: ${userId}`);
-            return res.status(404).json({ success: false, message: 'Student profile not found' });
-        }
-        const studentId = studentRows[0].id;
-        console.log('DEBUG: Resolved studentId', studentId);
+        // For STUDENT role, req.user.id is already the student ID from the students table
+        const studentId = req.user.id;
+        console.log('DEBUG: getPassStats - studentId (from req.user.id):', studentId);
 
         // Get statistics using exact statuses and categories
+        // Using COALESCE to handle NULL values from SUM
         const [stats] = await db.query(
             `SELECT 
                 COUNT(*) as total_passes,
-                SUM(CASE WHEN current_status IN ('PENDING', 'IN_APPROVAL', 'PENDING_CLASS_COORDINATOR', 'PENDING_HOSTEL_OFFICE', 'PENDING_CHIEF_WARDEN', 'EXTENSION_PENDING') THEN 1 ELSE 0 END) as in_approval,
-                SUM(CASE WHEN current_status IN ('FINAL_APPROVED', 'APPROVED', 'EXITED', 'OUTSIDE', 'RETURNED', 'COMPLETED', 'LATE_RETURN', 'COMPLETED_LATE', 'EXTENDED') THEN 1 ELSE 0 END) as approved,
-                SUM(CASE WHEN current_status = 'REJECTED' THEN 1 ELSE 0 END) as rejected,
-                SUM(CASE WHEN current_status = 'CANCELLED' THEN 1 ELSE 0 END) as cancelled
+                COALESCE(SUM(CASE WHEN current_status IN ('PENDING', 'IN_APPROVAL', 'PENDING_CLASS_COORDINATOR', 'PENDING_HOSTEL_OFFICE', 'PENDING_CHIEF_WARDEN', 'EXTENSION_PENDING') THEN 1 ELSE 0 END), 0) as in_approval,
+                COALESCE(SUM(CASE WHEN current_status IN ('FINAL_APPROVED', 'APPROVED', 'EXITED', 'OUTSIDE', 'RETURNED', 'COMPLETED', 'LATE_RETURN', 'COMPLETED_LATE', 'EXTENDED') THEN 1 ELSE 0 END), 0) as approved,
+                COALESCE(SUM(CASE WHEN current_status = 'REJECTED' THEN 1 ELSE 0 END), 0) as rejected,
+                COALESCE(SUM(CASE WHEN current_status = 'CANCELLED' THEN 1 ELSE 0 END), 0) as cancelled
              FROM passes
              WHERE student_id = ?`,
             [studentId]
         );
 
-        console.log('DEBUG: Raw stats from DB', stats[0]);
+        console.log('DEBUG: getPassStats - Raw stats from DB:', JSON.stringify(stats[0]));
 
         // Get monthly counts by type for approved/active passes
         const [monthlyTypeCounts] = await db.query(
@@ -423,21 +398,34 @@ const getPassStats = async (req, res) => {
             [studentId]
         );
 
+        console.log('DEBUG: getPassStats - Monthly type counts:', JSON.stringify(monthlyTypeCounts));
+
         // Get system settings
         const [settingsRows] = await db.query(
             "SELECT max_half_day_per_month, max_home_pass_per_month, max_half_day_hours, max_home_pass_days FROM system_settings LIMIT 1"
         );
-        const settings = settingsRows[0] || {
+
+        console.log('DEBUG: getPassStats - Settings rows from DB:', JSON.stringify(settingsRows));
+
+        // Ensure settings with proper fallbacks
+        const settings = settingsRows && settingsRows.length > 0 && settingsRows[0] ? {
+            max_half_day_per_month: settingsRows[0].max_half_day_per_month || 4,
+            max_home_pass_per_month: settingsRows[0].max_home_pass_per_month || 2,
+            max_half_day_hours: settingsRows[0].max_half_day_hours || 4,
+            max_home_pass_days: settingsRows[0].max_home_pass_days || 3
+        } : {
             max_half_day_per_month: 4,
             max_home_pass_per_month: 2,
             max_half_day_hours: 4,
             max_home_pass_days: 3
         };
 
-        console.log('DEBUG: settings', settings);
+        console.log('DEBUG: getPassStats - Final settings:', JSON.stringify(settings));
 
         const halfDayCount = monthlyTypeCounts.find(c => c.code === 'HALF_DAY')?.count || 0;
         const homePassCount = monthlyTypeCounts.find(c => c.code === 'HOME_PASS')?.count || 0;
+
+        console.log('DEBUG: getPassStats - halfDayCount:', halfDayCount, 'homePassCount:', homePassCount);
 
         const responseData = {
             total_passes: parseInt(stats[0].total_passes) || 0,
@@ -446,25 +434,25 @@ const getPassStats = async (req, res) => {
             rejected: parseInt(stats[0].rejected) || 0,
             cancelled: parseInt(stats[0].cancelled) || 0,
             half_day: {
-                limit: settings.max_half_day_per_month,
-                used: halfDayCount,
-                remaining: Math.max(0, settings.max_half_day_per_month - halfDayCount),
-                max_duration: settings.max_half_day_hours
+                limit: parseInt(settings.max_half_day_per_month) || 4,
+                used: parseInt(halfDayCount) || 0,
+                remaining: Math.max(0, (parseInt(settings.max_half_day_per_month) || 4) - (parseInt(halfDayCount) || 0)),
+                max_duration: parseInt(settings.max_half_day_hours) || 4
             },
             home_pass: {
-                limit: settings.max_home_pass_per_month,
-                used: homePassCount,
-                remaining: Math.max(0, settings.max_home_pass_per_month - homePassCount),
-                max_duration_days: settings.max_home_pass_days
+                limit: parseInt(settings.max_home_pass_per_month) || 2,
+                used: parseInt(homePassCount) || 0,
+                remaining: Math.max(0, (parseInt(settings.max_home_pass_per_month) || 2) - (parseInt(homePassCount) || 0)),
+                max_duration_days: parseInt(settings.max_home_pass_days) || 3
             },
             // Flat fields for compatibility
-            halfDayMonthlyLimit: settings.max_half_day_per_month,
-            halfDayMaxHours: settings.max_half_day_hours,
-            homePassMonthlyLimit: settings.max_home_pass_per_month,
-            homePassMaxDays: settings.max_home_pass_days
+            halfDayMonthlyLimit: parseInt(settings.max_half_day_per_month) || 4,
+            halfDayMaxHours: parseInt(settings.max_half_day_hours) || 4,
+            homePassMonthlyLimit: parseInt(settings.max_home_pass_per_month) || 2,
+            homePassMaxDays: parseInt(settings.max_home_pass_days) || 3
         };
 
-        console.log('DEBUG: stats (final response)', responseData);
+        console.log('DEBUG: getPassStats - Final response data:', JSON.stringify(responseData));
 
         res.status(200).json({
             success: true,
@@ -473,6 +461,7 @@ const getPassStats = async (req, res) => {
 
     } catch (error) {
         logger.error('Get pass stats error:', error);
+        console.error('DEBUG: getPassStats - Error details:', error.message, error.stack);
         res.status(500).json({
             success: false,
             message: 'Failed to fetch statistics'
@@ -518,14 +507,8 @@ const getPassTypes = async (req, res) => {
 const downloadPassPDF = async (req, res) => {
     try {
         const passId = req.params.id;
-        const userId = req.user.id;
-
-        // Get student_id from students table
-        const [studentRows] = await db.query('SELECT id FROM students WHERE user_id = ?', [userId]);
-        if (studentRows.length === 0) {
-            return res.status(404).json({ success: false, message: 'Student profile not found' });
-        }
-        const studentId = studentRows[0].id;
+        // For STUDENT role, req.user.id is already the student ID
+        const studentId = req.user.id;
 
         // Fetch pass details with student and approval information
         const [passes] = await db.query(
@@ -657,15 +640,9 @@ const downloadPassPDF = async (req, res) => {
 const requestExtension = async (req, res) => {
     try {
         const passId = req.params.id;
-        const userId = req.user.id;
+        // For STUDENT role, req.user.id is already the student ID
+        const studentId = req.user.id;
         const { extended_to_datetime, reason } = req.body;
-
-        // Get student_id from students table
-        const [studentRows] = await db.query('SELECT id FROM students WHERE user_id = ?', [userId]);
-        if (studentRows.length === 0) {
-            return res.status(404).json({ success: false, message: 'Student profile not found' });
-        }
-        const studentId = studentRows[0].id;
 
         const passService = require('../services/passService');
         const extensionId = await passService.requestExtension({

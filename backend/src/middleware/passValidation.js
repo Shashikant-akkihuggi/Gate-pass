@@ -109,14 +109,8 @@ const validatePassApplication = async (req, res, next) => {
  */
 const checkActivePasses = async (req, res, next) => {
     try {
-        const userId = req.user.id;
-
-        // Get student_id from students table
-        const [studentRows] = await db.query('SELECT id FROM students WHERE user_id = ?', [userId]);
-        if (studentRows.length === 0) {
-            return res.status(404).json({ success: false, message: 'Student profile not found' });
-        }
-        const studentId = studentRows[0].id;
+        // For STUDENT role, req.user.id is already the student ID
+        const studentId = req.user.id;
 
         // Check for active passes
         const [activePasses] = await db.query(
@@ -158,15 +152,10 @@ const checkActivePasses = async (req, res, next) => {
  */
 const checkMonthlyLimit = async (req, res, next) => {
     try {
-        const userId = req.user.id;
+        // For STUDENT role, req.user.id is already the student ID
+        const studentId = req.user.id;
         const { pass_type_id } = req.body;
 
-        // Get student_id from students table
-        const [studentRows] = await db.query('SELECT id FROM students WHERE user_id = ?', [userId]);
-        if (studentRows.length === 0) {
-            return res.status(404).json({ success: false, message: 'Student profile not found' });
-        }
-        const studentId = studentRows[0].id;
         req.studentId = studentId; // Ensure it's set for the next middleware
 
         // Get dynamic limits from system_settings
