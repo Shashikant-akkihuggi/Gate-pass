@@ -12,8 +12,20 @@ const {
     downloadPassPDF,
     requestExtension,
     getPendingExtensions,
-    processExtensionApproval
+    processExtensionApproval,
+    getPassConfig
 } = require('../controllers/passController');
+
+/**
+ * @route   GET /api/v1/passes/config
+ * @desc    Get system settings for students
+ * @access  Private (STUDENT only)
+ */
+router.get('/config',
+    authenticateToken,
+    authorizeRoles('STUDENT'),
+    getPassConfig
+);
 
 /**
  * @route   POST /api/v1/passes/extensions/:id/approve

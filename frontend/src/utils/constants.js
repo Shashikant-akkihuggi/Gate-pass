@@ -5,6 +5,7 @@ export const ROLES = {
     CHIEF_WARDEN: 'CHIEF_WARDEN',
     WATCHMAN: 'WATCHMAN',
     ADMIN: 'ADMIN',
+    SUPER_ADMIN: 'SUPER_ADMIN',
 };
 
 export const PASS_STATUS = {

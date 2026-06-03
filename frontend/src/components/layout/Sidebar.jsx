@@ -51,10 +51,22 @@ const Sidebar = ({ isOpen, onClose }) => {
             ],
             [ROLES.ADMIN]: [
                 { path: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-                { path: '/users', icon: Users, label: 'Users' },
-                { path: '/passes', icon: FileText, label: 'All Passes' },
-                { path: '/reports', icon: BarChart2, label: 'Reports' },
-                { path: '/settings', icon: Settings, label: 'Settings' },
+                { path: '/admin/users', icon: Users, label: 'Users' },
+                { path: '/admin/passes', icon: FileText, label: 'All Passes' },
+                { path: '/admin/reports', icon: BarChart2, label: 'Reports' },
+                { path: '/admin/analytics', icon: BarChart2, label: 'Analytics' },
+                { path: '/admin/notifications', icon: Bell, label: 'Notifications' },
+                { path: '/admin/settings', icon: Settings, label: 'Settings' },
+            ],
+            [ROLES.SUPER_ADMIN]: [
+                { path: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+                { path: '/admin/users', icon: Users, label: 'Users' },
+                { path: '/admin/passes', icon: FileText, label: 'All Passes' },
+                { path: '/admin/reports', icon: BarChart2, label: 'Reports' },
+                { path: '/admin/analytics', icon: BarChart2, label: 'Analytics' },
+                { path: '/admin/notifications', icon: Bell, label: 'Notifications' },
+                { path: '/admin/settings', icon: Settings, label: 'Settings' },
+                { path: '/admin/audit-logs', icon: Clock, label: 'Audit Logs' },
             ],
         };
 

@@ -3,6 +3,29 @@ const { createApprovalWorkflow, getWorkflowSteps } = require('../services/workfl
 const { PASS_STATUS, ROLES } = require('../config/constants');
 const logger = require('../utils/logger');
 const { formatMySQLDateTime } = require('../utils/dateHelper');
+const adminService = require('../services/adminService');
+
+/**
+ * @route   GET /api/v1/passes/config
+ * @desc    Get system settings for students
+ * @access  Private (STUDENT only)
+ */
+const getPassConfig = async (req, res) => {
+    try {
+        const settings = await adminService.getSystemSettings();
+        console.log('DEBUG: Student fetching pass config:', JSON.stringify(settings));
+        res.status(200).json({
+            success: true,
+            data: settings
+        });
+    } catch (error) {
+        logger.error('Get pass config error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch pass configuration'
+        });
+    }
+};
 
 /**
  * @route   POST /api/v1/passes/apply
@@ -140,7 +163,14 @@ const applyPass = async (req, res) => {
  */
 const getMyPasses = async (req, res) => {
     try {
-        const studentId = req.user.id;
+        const userId = req.user.id;
+
+        // Get student_id from students table
+        const [studentRows] = await db.query('SELECT id FROM students WHERE user_id = ?', [userId]);
+        if (studentRows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Student profile not found' });
+        }
+        const studentId = studentRows[0].id;
 
         // Get all passes with details including extension status
         const [passes] = await db.query(
@@ -198,7 +228,14 @@ const getMyPasses = async (req, res) => {
 const getPassDetails = async (req, res) => {
     try {
         const passId = req.params.id;
-        const studentId = req.user.id;
+        const userId = req.user.id;
+
+        // Get student_id from students table
+        const [studentRows] = await db.query('SELECT id FROM students WHERE user_id = ?', [userId]);
+        if (studentRows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Student profile not found' });
+        }
+        const studentId = studentRows[0].id;
 
         // Get pass details
         const [passes] = await db.query(
@@ -279,8 +316,15 @@ const getPassDetails = async (req, res) => {
 const cancelPass = async (req, res) => {
     try {
         const passId = req.params.id;
-        const studentId = req.user.id;
+        const userId = req.user.id;
         const { cancellation_reason } = req.body;
+
+        // Get student_id from students table
+        const [studentRows] = await db.query('SELECT id FROM students WHERE user_id = ?', [userId]);
+        if (studentRows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Student profile not found' });
+        }
+        const studentId = studentRows[0].id;
 
         // Get pass
         const [passes] = await db.query(
@@ -339,7 +383,17 @@ const cancelPass = async (req, res) => {
  */
 const getPassStats = async (req, res) => {
     try {
-        const studentId = req.user.id;
+        const userId = req.user.id;
+        console.log(`DEBUG: Fetching stats for user_id: ${userId}`);
+
+        // Get student_id from students table
+        const [studentRows] = await db.query('SELECT id FROM students WHERE user_id = ?', [userId]);
+        if (studentRows.length === 0) {
+            console.log(`DEBUG: Student profile not found for user_id: ${userId}`);
+            return res.status(404).json({ success: false, message: 'Student profile not found' });
+        }
+        const studentId = studentRows[0].id;
+        console.log(`DEBUG: Resolved student_id: ${studentId}`);
 
         // Get statistics
         const [stats] = await db.query(
@@ -357,45 +411,70 @@ const getPassStats = async (req, res) => {
             [studentId]
         );
 
-        // Get monthly count
-        const [monthlyCount] = await db.query(
-            `SELECT COUNT(*) as count
-             FROM passes
-             WHERE student_id = ?
-             AND MONTH(created_at) = MONTH(CURRENT_DATE())
-             AND YEAR(created_at) = YEAR(CURRENT_DATE())
-             AND current_status NOT IN ('CANCELLED', 'REJECTED')`,
+        // Get monthly counts by type
+        const [monthlyTypeCounts] = await db.query(
+            `SELECT pt.code, COUNT(*) as count
+             FROM passes p
+             JOIN pass_types pt ON p.pass_type_id = pt.id
+             WHERE p.student_id = ?
+             AND MONTH(p.created_at) = MONTH(CURRENT_DATE())
+             AND YEAR(p.created_at) = YEAR(CURRENT_DATE())
+             AND p.current_status NOT IN ('CANCELLED', 'REJECTED')
+             GROUP BY pt.code`,
             [studentId]
         );
 
+        console.log('DEBUG: Monthly type counts:', JSON.stringify(monthlyTypeCounts));
+
         // Get max passes per month from system_settings
-        // The table schema has columns for different pass types, not a generic key-value store
         const [settings] = await db.query(
-            "SELECT max_half_day_per_month, max_home_pass_per_month FROM system_settings LIMIT 1"
+            "SELECT max_half_day_per_month, max_home_pass_per_month, max_half_day_hours, max_home_pass_days FROM system_settings LIMIT 1"
         );
-        
-        // Use a reasonable default or the sum of limits if available
-        const maxPasses = settings.length > 0 
-            ? (parseInt(settings[0].max_half_day_per_month) + parseInt(settings[0].max_home_pass_per_month)) 
-            : 6;
+
+        const sys = settings[0] || {
+            max_half_day_per_month: 4,
+            max_home_pass_per_month: 2,
+            max_half_day_hours: 4,
+            max_home_pass_days: 3
+        };
+        console.log('DEBUG: Loaded system settings:', JSON.stringify(sys));
+
+        const halfDayCount = monthlyTypeCounts.find(c => c.code === 'HALF_DAY')?.count || 0;
+        const homePassCount = monthlyTypeCounts.find(c => c.code === 'HOME_PASS')?.count || 0;
+
+        const responseData = {
+            total_passes: stats[0].total_passes || 0,
+            in_approval: stats[0].in_approval || 0,
+            approved: stats[0].approved || 0,
+            outside: stats[0].outside || 0,
+            completed: stats[0].completed || 0,
+            completed_late: stats[0].completed_late || 0,
+            rejected: stats[0].rejected || 0,
+            cancelled: stats[0].cancelled || 0,
+            half_day: {
+                limit: sys.max_half_day_per_month,
+                used: halfDayCount,
+                remaining: Math.max(0, sys.max_half_day_per_month - halfDayCount),
+                max_duration: sys.max_half_day_hours
+            },
+            home_pass: {
+                limit: sys.max_home_pass_per_month,
+                used: homePassCount,
+                remaining: Math.max(0, sys.max_home_pass_per_month - homePassCount),
+                max_duration_days: sys.max_home_pass_days
+            },
+            // Flat fields as requested in step 5
+            halfDayMonthlyLimit: sys.max_half_day_per_month,
+            halfDayMaxHours: sys.max_half_day_hours,
+            homePassMonthlyLimit: sys.max_home_pass_per_month,
+            homePassMaxDays: sys.max_home_pass_days
+        };
+
+        console.log('DEBUG: Final calculated values:', JSON.stringify(responseData));
 
         res.status(200).json({
             success: true,
-            data: {
-                total: stats[0].total || 0,
-                pending: stats[0].pending || 0,
-                approved: stats[0].approved || 0,
-                outside: stats[0].outside || 0,
-                completed: stats[0].completed || 0,
-                completed_late: stats[0].completed_late || 0,
-                rejected: stats[0].rejected || 0,
-                cancelled: stats[0].cancelled || 0,
-                monthly_limit: {
-                    currentCount: monthlyCount[0].count || 0,
-                    maxPasses,
-                    remaining: Math.max(0, maxPasses - (monthlyCount[0].count || 0))
-                }
-            }
+            data: responseData
         });
 
     } catch (error) {
@@ -445,7 +524,14 @@ const getPassTypes = async (req, res) => {
 const downloadPassPDF = async (req, res) => {
     try {
         const passId = req.params.id;
-        const studentId = req.user.id;
+        const userId = req.user.id;
+
+        // Get student_id from students table
+        const [studentRows] = await db.query('SELECT id FROM students WHERE user_id = ?', [userId]);
+        if (studentRows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Student profile not found' });
+        }
+        const studentId = studentRows[0].id;
 
         // Fetch pass details with student and approval information
         const [passes] = await db.query(
@@ -577,8 +663,15 @@ const downloadPassPDF = async (req, res) => {
 const requestExtension = async (req, res) => {
     try {
         const passId = req.params.id;
-        const studentId = req.user.id;
+        const userId = req.user.id;
         const { extended_to_datetime, reason } = req.body;
+
+        // Get student_id from students table
+        const [studentRows] = await db.query('SELECT id FROM students WHERE user_id = ?', [userId]);
+        if (studentRows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Student profile not found' });
+        }
+        const studentId = studentRows[0].id;
 
         const passService = require('../services/passService');
         const extensionId = await passService.requestExtension({
@@ -710,5 +803,6 @@ module.exports = {
     downloadPassPDF,
     requestExtension,
     getPendingExtensions,
-    processExtensionApproval
+    processExtensionApproval,
+    getPassConfig
 };

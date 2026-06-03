@@ -25,6 +25,7 @@ import { handleError } from '../../utils/helpers';
 const NewPass = () => {
     const location = useLocation();
     const [passTypes, setPassTypes] = useState([]);
+    const [config, setConfig] = useState(null);
     const [loading, setLoading] = useState(false);
     const [step, setStep] = useState(1);
     const [formData, setFormData] = useState({
@@ -39,6 +40,7 @@ const NewPass = () => {
 
     useEffect(() => {
         fetchPassTypes();
+        fetchConfig();
 
         // Handle quick action redirects
         if (location.state?.type) {
@@ -52,6 +54,7 @@ const NewPass = () => {
             const types = response.data.map(pt => ({
                 value: pt.id,
                 label: pt.name,
+                code: pt.code,
                 requiresDestination: pt.requires_destination
             }));
             setPassTypes(types);
@@ -64,6 +67,15 @@ const NewPass = () => {
             }
         } catch (error) {
             toast.error(handleError(error));
+        }
+    };
+
+    const fetchConfig = async () => {
+        try {
+            const response = await passService.getPassConfig();
+            setConfig(response.data);
+        } catch (error) {
+            console.error('Failed to fetch config:', error);
         }
     };
 
@@ -84,11 +96,34 @@ const NewPass = () => {
             if (!formData.to_datetime) newErrors.to_datetime = 'Expected return time is required';
 
             if (formData.from_datetime && formData.to_datetime) {
-                if (new Date(formData.from_datetime) >= new Date(formData.to_datetime)) {
+                const fromDate = new Date(formData.from_datetime);
+                const toDate = new Date(formData.to_datetime);
+
+                if (fromDate >= toDate) {
                     newErrors.to_datetime = 'Return time must be after departure';
                 }
-                if (new Date(formData.from_datetime) < new Date()) {
+                if (fromDate < new Date()) {
                     newErrors.from_datetime = 'Departure cannot be in the past';
+                }
+
+                // Duration validation
+                if (config && formData.pass_type_id) {
+                    const selectedType = passTypes.find(t => t.value === parseInt(formData.pass_type_id));
+                    const durationMs = toDate - fromDate;
+
+                    if (selectedType?.code === 'HALF_DAY') {
+                        const maxHours = config.max_half_day_hours;
+                        const durationHours = durationMs / (1000 * 60 * 60);
+                        if (durationHours > maxHours) {
+                            newErrors.to_datetime = `Half-Day pass cannot exceed ${maxHours} hours`;
+                        }
+                    } else if (selectedType?.code === 'HOME_PASS') {
+                        const maxDays = config.max_home_pass_days;
+                        const durationDays = durationMs / (1000 * 60 * 60 * 24);
+                        if (durationDays > maxDays) {
+                            newErrors.to_datetime = `Home pass cannot exceed ${maxDays} days`;
+                        }
+                    }
                 }
             }
         }
@@ -202,10 +237,22 @@ const NewPass = () => {
                         >
                             <div className="p-4 bg-primary/5 rounded-2xl border border-primary/10 flex items-start gap-4">
                                 <Info className="text-primary mt-0.5" size={18} />
-                                <p className="text-xs font-medium text-primary/70 leading-relaxed">
-                                    Choose the type of pass and the exact timing for your exit and return.
-                                    Approvals usually take 2-4 hours.
-                                </p>
+                                <div className="space-y-1">
+                                    <p className="text-xs font-medium text-primary/70 leading-relaxed">
+                                        Choose the type of pass and the exact timing for your exit and return.
+                                        Approvals usually take 2-4 hours.
+                                    </p>
+                                    {config && (
+                                        <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
+                                            <span className="text-[10px] font-bold text-primary/60 uppercase tracking-wider">
+                                                Half-Day: Max {config.max_half_day_hours}h
+                                            </span>
+                                            <span className="text-[10px] font-bold text-primary/60 uppercase tracking-wider">
+                                                Home Pass: Max {config.max_home_pass_days} days
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
 
                             <Select

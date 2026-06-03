@@ -640,6 +640,70 @@ const StudentDashboard = () => {
                         />
                     </section>
 
+                    {/* Monthly Limits Section */}
+                    <section>
+                        <div className="mb-4 px-2">
+                            <h2 className="text-xs font-black text-text/30 uppercase tracking-[0.2em]">Monthly Pass Usage</h2>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="bg-card p-6 rounded-3xl border border-border shadow-sm">
+                                <div className="flex justify-between items-center mb-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 bg-primary/10 rounded-xl text-primary">
+                                            <Clock size={20} />
+                                        </div>
+                                        <h3 className="font-bold text-text">Half-Day Passes</h3>
+                                    </div>
+                                    <span className="text-xs font-black text-primary bg-primary/10 px-2 py-1 rounded-lg">
+                                        Limit: {stats?.half_day?.limit || 0}
+                                    </span>
+                                </div>
+                                <div className="space-y-3">
+                                    <div className="flex justify-between text-xs font-medium">
+                                        <span className="text-text/40">Remaining this month</span>
+                                        <span className="text-text">{stats?.half_day?.remaining || 0} left</span>
+                                    </div>
+                                    <div className="h-2 bg-text/5 rounded-full overflow-hidden">
+                                        <motion.div 
+                                            initial={{ width: 0 }}
+                                            animate={{ width: `${((stats?.half_day?.used || 0) / (stats?.half_day?.limit || 1)) * 100}%` }}
+                                            className="h-full bg-primary"
+                                        />
+                                    </div>
+                                    <p className="text-[10px] text-text/30 italic">Max duration: {stats?.half_day?.max_duration || 0} hours per pass</p>
+                                </div>
+                            </div>
+
+                            <div className="bg-card p-6 rounded-3xl border border-border shadow-sm">
+                                <div className="flex justify-between items-center mb-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 bg-success/10 rounded-xl text-success">
+                                            <School size={20} />
+                                        </div>
+                                        <h3 className="font-bold text-text">Home Passes</h3>
+                                    </div>
+                                    <span className="text-xs font-black text-success bg-success/10 px-2 py-1 rounded-lg">
+                                        Limit: {stats?.home_pass?.limit || 0}
+                                    </span>
+                                </div>
+                                <div className="space-y-3">
+                                    <div className="flex justify-between text-xs font-medium">
+                                        <span className="text-text/40">Remaining this month</span>
+                                        <span className="text-text">{stats?.home_pass?.remaining || 0} left</span>
+                                    </div>
+                                    <div className="h-2 bg-text/5 rounded-full overflow-hidden">
+                                        <motion.div 
+                                            initial={{ width: 0 }}
+                                            animate={{ width: `${((stats?.home_pass?.used || 0) / (stats?.home_pass?.limit || 1)) * 100}%` }}
+                                            className="h-full bg-success"
+                                        />
+                                    </div>
+                                    <p className="text-[10px] text-text/30 italic">Max duration: {stats?.home_pass?.max_duration_days || 0} days per pass</p>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
                     {/* Recent Passes Modern Table */}
                     <section>
                         <div className="flex justify-between items-center mb-6 px-2">

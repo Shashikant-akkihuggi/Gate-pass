@@ -15,6 +15,14 @@ import Approvals from './pages/approver/Approvals';
 import ApprovalHistory from './pages/approver/ApprovalHistory';
 import Reports from './pages/reports/Reports';
 import ScanQR from './pages/watchman/ScanQR';
+import AdminDashboard from './pages/admin/Dashboard';
+import UserManagement from './pages/admin/UserManagement';
+import PassManagement from './pages/admin/PassManagement';
+import SystemSettings from './pages/admin/SystemSettings';
+import AuditLogs from './pages/admin/AuditLogs';
+import Analytics from './pages/admin/Analytics';
+import NotificationCenter from './pages/admin/NotificationCenter';
+import AdminReports from './pages/admin/Reports';
 import { ROLES } from './utils/constants';
 
 // Protected Route Component
@@ -56,6 +64,7 @@ const getRoleDefaultRoute = (role) => {
         case ROLES.WATCHMAN:
             return '/scan';
         case ROLES.ADMIN:
+        case ROLES.SUPER_ADMIN:
             return '/admin/dashboard';
         default:
             return '/';
@@ -165,10 +174,11 @@ function AppRoutes() {
                     element={
                         <ProtectedRoute
                             allowedRoles={[
-                                ROLES.CLASS_COORDINATOR,
                                 ROLES.HOSTEL_OFFICE,
                                 ROLES.CHIEF_WARDEN,
+                                ROLES.CLASS_COORDINATOR,
                                 ROLES.ADMIN,
+                                ROLES.SUPER_ADMIN,
                             ]}
                         >
                             <Approvals />
@@ -180,10 +190,11 @@ function AppRoutes() {
                     element={
                         <ProtectedRoute
                             allowedRoles={[
-                                ROLES.CLASS_COORDINATOR,
                                 ROLES.HOSTEL_OFFICE,
                                 ROLES.CHIEF_WARDEN,
+                                ROLES.CLASS_COORDINATOR,
                                 ROLES.ADMIN,
+                                ROLES.SUPER_ADMIN,
                             ]}
                         >
                             <ApprovalHistory />
@@ -195,7 +206,7 @@ function AppRoutes() {
                 <Route
                     path="scan"
                     element={
-                        <ProtectedRoute allowedRoles={[ROLES.WATCHMAN, ROLES.ADMIN]}>
+                        <ProtectedRoute allowedRoles={[ROLES.WATCHMAN, ROLES.ADMIN, ROLES.SUPER_ADMIN]}>
                             <ScanQR />
                         </ProtectedRoute>
                     }
@@ -211,9 +222,76 @@ function AppRoutes() {
                                 ROLES.CHIEF_WARDEN,
                                 ROLES.CLASS_COORDINATOR,
                                 ROLES.ADMIN,
+                                ROLES.SUPER_ADMIN,
                             ]}
                         >
                             <Reports />
+                        </ProtectedRoute>
+                    }
+                />
+
+                {/* Admin Routes */}
+                <Route
+                    path="admin/dashboard"
+                    element={
+                        <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.SUPER_ADMIN]}>
+                            <AdminDashboard />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="admin/users"
+                    element={
+                        <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.SUPER_ADMIN]}>
+                            <UserManagement />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="admin/passes"
+                    element={
+                        <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.SUPER_ADMIN]}>
+                            <PassManagement />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="admin/settings"
+                    element={
+                        <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.SUPER_ADMIN]}>
+                            <SystemSettings />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="admin/audit-logs"
+                    element={
+                        <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.SUPER_ADMIN]}>
+                            <AuditLogs />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="admin/analytics"
+                    element={
+                        <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.SUPER_ADMIN]}>
+                            <Analytics />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="admin/notifications"
+                    element={
+                        <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.SUPER_ADMIN]}>
+                            <NotificationCenter />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="admin/reports"
+                    element={
+                        <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.SUPER_ADMIN]}>
+                            <AdminReports />
                         </ProtectedRoute>
                     }
                 />

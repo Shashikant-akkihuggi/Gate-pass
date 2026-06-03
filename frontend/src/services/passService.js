@@ -70,4 +70,10 @@ export const passService = {
         const response = await api.post(`/passes/extensions/${extensionId}/approve`, decisionData);
         return response.data;
     },
+
+    // Get pass configuration
+    getPassConfig: async () => {
+        const response = await api.get('/passes/config');
+        return response.data;
+    },
 };
