@@ -1,4 +1,4 @@
-const { verifyAccessToken } = require('../config/jwt');
+const { verifyAccessToken } = require('../utils/jwtUtils');
 const { HTTP_STATUS, ERROR_CODES } = require('../config/constants');
 const logger = require('../utils/logger');
 
@@ -28,8 +28,12 @@ const authenticate = async (req, res, next) => {
         }
 
         // Extract token
-        const token = authHeader.substring(7); // Remove 'Bearer ' prefix
-        logger.info('Token extracted, length:', token.length);
+        const token = authHeader.split(' ')[1]; // Bearer TOKEN
+        logger.info('Token extracted, length:', token?.length);
+
+        if (!token) {
+            throw new Error('Invalid token format');
+        }
 
         // Verify token
         const decoded = verifyAccessToken(token);

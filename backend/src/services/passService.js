@@ -101,25 +101,42 @@ const checkOverlappingPasses = async (studentId, fromDatetime, toDatetime, exclu
 /**
  * Check monthly pass limit
  * @param {string} studentId - Student ID
+ * @param {string} passTypeCode - Pass type code
  * @returns {Promise<Object>} Pass count and limit
  */
-const checkMonthlyPassLimit = async (studentId) => {
-    // Get max passes per month from settings
-    const [settings] = await db.query(
-        "SELECT setting_value FROM system_settings WHERE setting_key = 'max_passes_per_month'"
-    );
+const checkMonthlyPassLimit = async (studentId, passTypeCode) => {
+    // Get settings from database
+    const [settings] = await db.query('SELECT * FROM system_settings LIMIT 1');
+    const s = settings[0];
 
-    const maxPasses = settings.length > 0 ? parseInt(settings[0].setting_value) : 4;
+    const maxPasses = passTypeCode === PASS_TYPES.HALF_DAY 
+        ? s.max_half_day_per_month 
+        : s.max_home_pass_per_month;
 
-    // Count passes this month
+    const isEnabled = passTypeCode === PASS_TYPES.HALF_DAY 
+        ? s.enable_half_day 
+        : s.enable_home_pass;
+
+    if (!isEnabled) {
+        return {
+            currentCount: 0,
+            maxPasses,
+            canApply: false,
+            message: `${passTypeCode.replace('_', ' ')} is currently disabled by administrator`
+        };
+    }
+
+    // Count passes of this type this month
     const [result] = await db.query(
         `SELECT COUNT(*) as count
-     FROM passes
-     WHERE student_id = ?
-       AND current_status NOT IN ('CANCELLED', 'REJECTED')
-       AND MONTH(created_at) = MONTH(CURRENT_DATE())
-       AND YEAR(created_at) = YEAR(CURRENT_DATE())`,
-        [studentId]
+     FROM passes p
+     JOIN pass_types pt ON p.pass_type_id = pt.id
+     WHERE p.student_id = ?
+       AND pt.code = ?
+       AND p.current_status NOT IN ('CANCELLED', 'REJECTED')
+       AND MONTH(p.created_at) = MONTH(CURRENT_DATE())
+       AND YEAR(p.created_at) = YEAR(CURRENT_DATE())`,
+        [studentId, passTypeCode]
     );
 
     const currentCount = result[0].count;
@@ -139,9 +156,12 @@ const checkMonthlyPassLimit = async (studentId) => {
  * @returns {Promise<Object>} Validation result
  */
 const validatePassDuration = async (passTypeCode, fromDatetime, toDatetime) => {
-    const passType = await getPassTypeByCode(passTypeCode);
+    const [settings] = await db.query('SELECT * FROM system_settings LIMIT 1');
+    const s = settings[0];
 
-    const durationHours = (new Date(toDatetime) - new Date(fromDatetime)) / (1000 * 60 * 60);
+    const durationMs = new Date(toDatetime) - new Date(fromDatetime);
+    const durationHours = durationMs / (1000 * 60 * 60);
+    const durationDays = durationMs / (1000 * 60 * 60 * 24);
 
     if (durationHours <= 0) {
         return {
@@ -150,29 +170,35 @@ const validatePassDuration = async (passTypeCode, fromDatetime, toDatetime) => {
         };
     }
 
-    if (durationHours > passType.max_duration_hours) {
-        return {
-            isValid: false,
-            message: `Pass duration cannot exceed ${passType.max_duration_hours} hours`
-        };
-    }
-
-    // Additional validation for half-day pass
     if (passTypeCode === PASS_TYPES.HALF_DAY) {
+        if (durationHours > s.max_half_day_hours) {
+            return {
+                isValid: false,
+                message: `Half-day pass duration cannot exceed ${s.max_half_day_hours} hours`
+            };
+        }
+
         const fromDate = new Date(fromDatetime).toDateString();
         const toDate = new Date(toDatetime).toDateString();
-
         if (fromDate !== toDate) {
             return {
                 isValid: false,
                 message: 'Half-day pass must be within the same day'
             };
         }
+    } else if (passTypeCode === PASS_TYPES.HOME_PASS) {
+        if (durationDays > s.max_home_pass_days) {
+            return {
+                isValid: false,
+                message: `Home pass duration cannot exceed ${s.max_home_pass_days} days`
+            };
+        }
     }
 
     return {
         isValid: true,
-        durationHours
+        durationHours,
+        durationDays
     };
 };
 

@@ -5,7 +5,8 @@ const ROLES = {
     HOSTEL_OFFICE: 'HOSTEL_OFFICE',
     CHIEF_WARDEN: 'CHIEF_WARDEN',
     WATCHMAN: 'WATCHMAN',
-    ADMIN: 'ADMIN'
+    ADMIN: 'ADMIN',
+    SUPER_ADMIN: 'SUPER_ADMIN'
 };
 
 // User status

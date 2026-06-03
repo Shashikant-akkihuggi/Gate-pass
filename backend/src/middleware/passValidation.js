@@ -44,7 +44,7 @@ const validatePassApplication = async (req, res, next) => {
         // Validate pass type exists
         if (pass_type_id) {
             const [passTypes] = await db.query(
-                'SELECT id, code, requires_destination, max_duration_hours FROM pass_types WHERE id = ? AND is_active = TRUE',
+                'SELECT id, code, requires_destination FROM pass_types WHERE id = ? AND is_active = TRUE',
                 [pass_type_id]
             );
 
@@ -58,10 +58,30 @@ const validatePassApplication = async (req, res, next) => {
                     errors.push(`Destination is required for ${passType.code} pass`);
                 }
 
+                // Get dynamic limits from system_settings
+                const [settings] = await db.query('SELECT * FROM system_settings LIMIT 1');
+                const sys = settings[0] || { max_half_day_hours: 4, max_home_pass_days: 3, enable_half_day: 1, enable_home_pass: 1 };
+
+                // Check if pass type is enabled
+                if (passType.code === 'HALF_DAY' && !sys.enable_half_day) {
+                    errors.push('Half-Day passes are currently disabled by administrator');
+                }
+                if (passType.code === 'HOME_PASS' && !sys.enable_home_pass) {
+                    errors.push('Home passes are currently disabled by administrator');
+                }
+
                 // Check duration
-                const durationHours = (toDate - fromDate) / (1000 * 60 * 60);
-                if (durationHours > passType.max_duration_hours) {
-                    errors.push(`Pass duration cannot exceed ${passType.max_duration_hours} hours`);
+                const durationMs = toDate - fromDate;
+                if (passType.code === 'HALF_DAY') {
+                    const durationHours = durationMs / (1000 * 60 * 60);
+                    if (durationHours > sys.max_half_day_hours) {
+                        errors.push(`Half-Day pass duration cannot exceed ${sys.max_half_day_hours} hours`);
+                    }
+                } else if (passType.code === 'HOME_PASS') {
+                    const durationDays = durationMs / (1000 * 60 * 60 * 24);
+                    if (durationDays > sys.max_home_pass_days) {
+                        errors.push(`Home pass duration cannot exceed ${sys.max_home_pass_days} days`);
+                    }
                 }
             }
         }
@@ -132,30 +152,37 @@ const checkActivePasses = async (req, res, next) => {
 const checkMonthlyLimit = async (req, res, next) => {
     try {
         const studentId = req.studentId;
+        const { pass_type_id } = req.body;
 
-        // Get max passes per month from system settings
-        const [settings] = await db.query(
-            "SELECT setting_value FROM system_settings WHERE setting_key = 'max_passes_per_month'"
-        );
+        // Get dynamic limits from system_settings
+        const [settings] = await db.query('SELECT * FROM system_settings LIMIT 1');
+        const sys = settings[0] || { max_half_day_per_month: 4, max_home_pass_per_month: 2 };
 
-        const maxPasses = settings.length > 0 ? parseInt(settings[0].setting_value) : 4;
+        // Get pass type code
+        const [passTypes] = await db.query('SELECT code FROM pass_types WHERE id = ?', [pass_type_id]);
+        if (passTypes.length === 0) return next();
 
-        // Count passes this month
+        const passType = passTypes[0];
+        const maxLimit = passType.code === 'HALF_DAY' ? sys.max_half_day_per_month : sys.max_home_pass_per_month;
+
+        // Count passes this month of this type
         const [count] = await db.query(
             `SELECT COUNT(*) as count
-             FROM passes
-             WHERE student_id = ?
-             AND MONTH(created_at) = MONTH(CURRENT_DATE())
-             AND YEAR(created_at) = YEAR(CURRENT_DATE())
-             AND current_status NOT IN ('CANCELLED', 'REJECTED')`,
-            [studentId]
+             FROM passes p
+             JOIN pass_types pt ON p.pass_type_id = pt.id
+             WHERE p.student_id = ?
+             AND pt.code = ?
+             AND MONTH(p.created_at) = MONTH(CURRENT_DATE())
+             AND YEAR(p.created_at) = YEAR(CURRENT_DATE())
+             AND p.current_status NOT IN ('CANCELLED', 'REJECTED')`,
+            [studentId, passType.code]
         );
 
-        if (count[0].count >= maxPasses) {
+        if (count[0].count >= maxLimit) {
             return res.status(429).json({
                 success: false,
-                message: `Monthly pass limit reached. You can only apply for ${maxPasses} passes per month.`,
-                limit: maxPasses,
+                message: `Monthly limit reached for ${passType.code} passes. You can only apply for ${maxLimit} per month.`,
+                limit: maxLimit,
                 used: count[0].count
             });
         }

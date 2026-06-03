@@ -48,6 +48,9 @@ const login = async (req, res) => {
 
             if (coordinators.length > 0) {
                 const coordinator = coordinators[0];
+                if (coordinator.status !== 'ACTIVE') {
+                    return res.status(403).json({ success: false, message: 'Account is inactive' });
+                }
                 const isPasswordValid = await bcrypt.compare(password, coordinator.password_hash);
                 if (!isPasswordValid) {
                     return res.status(401).json({ success: false, message: 'Invalid mobile number or password' });
@@ -77,6 +80,26 @@ const login = async (req, res) => {
                     // Fetch profile from staff table if applicable
                     const [staff] = await db.query('SELECT * FROM staff WHERE user_id = ?', [u.id]);
                     profile = staff[0] || null;
+                } else {
+                    // 4. Try to find in admins table by username
+                    const [admins] = await db.query(
+                        'SELECT * FROM admins WHERE username = ?',
+                        [identifier]
+                    );
+
+                    if (admins.length > 0) {
+                        const admin = admins[0];
+                        if (admin.status !== 'ACTIVE') {
+                            return res.status(403).json({ success: false, message: 'Admin account is inactive' });
+                        }
+                        const isPasswordValid = await bcrypt.compare(password, admin.password_hash);
+                        if (!isPasswordValid) {
+                            return res.status(401).json({ success: false, message: 'Invalid username or password' });
+                        }
+                        role = admin.role;
+                        user = { id: admin.id, email: admin.username, role };
+                        profile = { id: admin.id, username: admin.username, role: admin.role };
+                    }
                 }
             }
         }
@@ -101,6 +124,19 @@ const login = async (req, res) => {
         const refreshToken = generateRefreshToken(tokenPayload);
 
         logger.info(`User logged in: ${user.email} (${user.role})`);
+
+        // Log admin login to audit_logs
+        if (user.role === 'ADMIN' || user.role === 'SUPER_ADMIN') {
+            try {
+                const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+                await db.query(
+                    'INSERT INTO audit_logs (actor_id, actor_role, action, description, ip_address) VALUES (?, ?, ?, ?, ?)',
+                    [user.id, user.role, 'ADMIN_LOGIN', `Admin logged in from ${ip}`, ip]
+                );
+            } catch (auditError) {
+                logger.error('Failed to log admin login audit:', auditError);
+            }
+        }
 
         res.status(200).json({
             success: true,

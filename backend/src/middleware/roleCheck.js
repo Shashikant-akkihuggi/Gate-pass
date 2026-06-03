@@ -36,6 +36,13 @@ const roleCheck = (allowedRoles) => {
             if (!roles.includes(req.user.role)) {
                 logger.warn(`Access denied for user ${req.user.id} with role ${req.user.role}. Required: ${roles.join(', ')}`);
 
+                // SUPER_ADMIN should have access to everything that ADMIN has
+                // or if it's a general resource for multiple roles
+                if (req.user.role === 'SUPER_ADMIN') {
+                    logger.info('Role check passed (SUPER_ADMIN bypass)');
+                    return next();
+                }
+
                 return res.status(HTTP_STATUS.FORBIDDEN).json({
                     success: false,
                     error: {

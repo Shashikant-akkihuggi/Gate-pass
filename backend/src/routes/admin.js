@@ -1,82 +1,36 @@
 const express = require('express');
 const router = express.Router();
-const authenticate = require('../middleware/auth');
-const roleCheck = require('../middleware/roleCheck');
+const adminController = require('../controllers/adminController');
+const { authenticateToken } = require('../middleware/authMiddleware');
+const { authorizeRoles } = require('../middleware/authMiddleware');
 const { ROLES } = require('../config/constants');
 
-// Import controllers (to be created)
-// const adminController = require('../controllers/adminController');
+// Apply auth and admin role check to all routes
+router.use(authenticateToken);
+router.use(authorizeRoles(ROLES.ADMIN, ROLES.SUPER_ADMIN));
 
-/**
- * @route   GET /api/v1/admin/users
- * @desc    Get all users
- * @access  Private (Admin)
- */
-router.get('/users', authenticate, roleCheck([ROLES.ADMIN]));
-// router.get('/users', authenticate, roleCheck([ROLES.ADMIN]), adminController.getAllUsers);
+router.get('/stats', adminController.getStats);
+router.get('/users/:role', adminController.getUsers);
+router.post('/coordinators', adminController.createCoordinator);
+router.post('/staff', adminController.createStaff);
+router.get('/students', adminController.getStudents);
+router.get('/passes', adminController.getAllPasses);
+router.post('/user-status', adminController.updateUserStatus);
+router.post('/reset-password', adminController.resetPassword);
+router.post('/delete-user', adminController.deleteUser);
+router.get('/settings', adminController.getSettings);
+router.put('/settings', adminController.updateSettings);
+router.get('/audit-logs', adminController.getAuditLogs);
+router.get('/analytics', adminController.getAnalytics);
+router.get('/notifications', adminController.getNotifications);
+router.post('/notifications', adminController.sendNotification);
 
-/**
- * @route   POST /api/v1/admin/users
- * @desc    Create new user
- * @access  Private (Admin)
- */
-router.post('/users', authenticate, roleCheck([ROLES.ADMIN]));
-// router.post('/users', authenticate, roleCheck([ROLES.ADMIN]), adminController.createUser);
-
-/**
- * @route   PUT /api/v1/admin/users/:id
- * @desc    Update user
- * @access  Private (Admin)
- */
-router.put('/users/:id', authenticate, roleCheck([ROLES.ADMIN]));
-// router.put('/users/:id', authenticate, roleCheck([ROLES.ADMIN]), adminController.updateUser);
-
-/**
- * @route   DELETE /api/v1/admin/users/:id
- * @desc    Delete user
- * @access  Private (Admin)
- */
-router.delete('/users/:id', authenticate, roleCheck([ROLES.ADMIN]));
-// router.delete('/users/:id', authenticate, roleCheck([ROLES.ADMIN]), adminController.deleteUser);
-
-/**
- * @route   GET /api/v1/admin/classes
- * @desc    Get all classes
- * @access  Private (Admin)
- */
-router.get('/classes', authenticate, roleCheck([ROLES.ADMIN]));
-// router.get('/classes', authenticate, roleCheck([ROLES.ADMIN]), adminController.getAllClasses);
-
-/**
- * @route   POST /api/v1/admin/classes
- * @desc    Create new class
- * @access  Private (Admin)
- */
-router.post('/classes', authenticate, roleCheck([ROLES.ADMIN]));
-// router.post('/classes', authenticate, roleCheck([ROLES.ADMIN]), adminController.createClass);
-
-/**
- * @route   GET /api/v1/admin/settings
- * @desc    Get system settings
- * @access  Private (Admin)
- */
-router.get('/settings', authenticate, roleCheck([ROLES.ADMIN]));
-// router.get('/settings', authenticate, roleCheck([ROLES.ADMIN]), adminController.getSettings);
-
-/**
- * @route   PUT /api/v1/admin/settings
- * @desc    Update system settings
- * @access  Private (Admin)
- */
-router.put('/settings', authenticate, roleCheck([ROLES.ADMIN]));
-// router.put('/settings', authenticate, roleCheck([ROLES.ADMIN]), adminController.updateSettings);
-
-/**
- * @route   GET /api/v1/admin/reports
- * @desc    Generate reports
- * @access  Private (Admin)
- */
-router.get('/reports', authenticate, roleCheck([ROLES.ADMIN]));
-// router.get('/reports', authenticate, roleCheck([ROLES.ADMIN]), adminController.generateReports);
+// Reports
+router.get('/reports/students', adminController.getStudentReport);
+router.get('/reports/coordinators', adminController.getCoordinatorReport);
+router.get('/reports/watchmen', adminController.getWatchmanReport);
+router.get('/reports/students/export', adminController.exportStudentReport);
+router.get('/reports/coordinators/export', adminController.exportCoordinatorReport);
+router.get('/reports/watchmen/export', adminController.exportWatchmanReport);
 
 module.exports = router;

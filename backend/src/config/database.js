@@ -23,6 +23,7 @@ const pool = mysql.createPool(dbConfig);
 // Test database connection
 const testConnection = async () => {
     try {
+        logger.info(`Attempting connection to ${dbConfig.database} as ${dbConfig.user}...`);
         const connection = await pool.getConnection();
         logger.info('✓ Database connection pool created successfully');
         logger.info(`✓ Connected to database: ${dbConfig.database}`);
@@ -31,6 +32,7 @@ const testConnection = async () => {
         return true;
     } catch (error) {
         logger.error('✗ Database connection failed:', error.message);
+        logger.error('Full Error:', error);
 
         if (error.code === 'ECONNREFUSED') {
             logger.error('✗ MySQL server is not running or refusing connections');
