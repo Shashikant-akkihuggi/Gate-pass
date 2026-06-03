@@ -82,7 +82,8 @@ const findPassForScan = async (identifier) => {
 const getWatchmanDashboard = async () => {
     const [pendingExits] = await db.query(
         `SELECT p.id as pass_id, p.from_datetime, p.to_datetime, p.destination,
-                s.id as student_id, s.usn as roll_number, s.full_name as student_name, '' as room_number,
+                s.id as student_id, s.usn as roll_number, s.full_name as student_name, 
+                s.full_name as first_name, '' as last_name,
                 s.branch as department,
                 pt.name as pass_type_name,
                 'Hostel' as hostel_block
@@ -96,7 +97,8 @@ const getWatchmanDashboard = async () => {
     const [studentsOutside] = await db.query(
         `SELECT p.id as pass_id, p.from_datetime, p.to_datetime, p.destination,
                 p.exit_scan_at,
-                s.id as student_id, s.usn as roll_number, s.full_name as student_name, '' as room_number,
+                s.id as student_id, s.usn as roll_number, s.full_name as student_name,
+                s.full_name as first_name, '' as last_name,
                 s.branch as department,
                 pt.name as pass_type_name,
                 'Hostel' as hostel_block,
@@ -112,7 +114,7 @@ const getWatchmanDashboard = async () => {
         `SELECT p.id as pass_id, p.from_datetime, p.to_datetime,
                 p.exit_scan_at, p.return_scan_at, COALESCE(p.late_minutes, 0) as late_minutes,
                 p.current_status,
-                s.usn as roll_number, s.full_name as student_name,
+                s.usn as roll_number, s.full_name as first_name, '' as last_name,
                 pt.name as pass_type_name
          FROM passes p
          JOIN students s ON p.student_id = s.id
@@ -146,18 +148,17 @@ const getScanHistory = async (filters = {}) => {
     const { limit = 50, offset = 0 } = filters;
 
     const [logs] = await db.query(
-        `SELECT gl.*,
+        `SELECT ps.id, ps.scan_type as action_type, ps.scan_time, ps.gate_location, 
+                ps.is_late, ps.late_duration_minutes as late_minutes,
                 s.usn as roll_number, s.full_name as first_name, '' as last_name,
                 u.email as watchman_email,
-                st.first_name as watchman_first_name, st.last_name as watchman_last_name,
                 pt.name as pass_type_name
-         FROM gate_logs gl
-         JOIN students s ON gl.student_id = s.id
-         JOIN users u ON gl.scanned_by = u.id
-         LEFT JOIN staff st ON u.id = st.user_id
-         JOIN passes p ON gl.pass_id = p.id
+         FROM pass_scans ps
+         JOIN students s ON ps.student_id = s.id
+         JOIN users u ON ps.watchman_id = u.id
+         JOIN passes p ON ps.pass_id = p.id
          JOIN pass_types pt ON p.pass_type_id = pt.id
-         ORDER BY gl.scan_time DESC
+         ORDER BY ps.scan_time DESC
          LIMIT ? OFFSET ?`,
         [parseInt(limit), parseInt(offset)]
     );
@@ -168,6 +169,7 @@ const getScanHistory = async (filters = {}) => {
 // ── Exit scan ─────────────────────────────────────────────────────────────────
 
 const recordExitScan = async ({ identifier, watchmanId, gateLocation, remarks }) => {
+    const startTime = Date.now();
     const pass = await findPassForScan(identifier);
 
     if (!pass) {
@@ -196,14 +198,15 @@ const recordExitScan = async ({ identifier, watchmanId, gateLocation, remarks })
         [nowFormatted, pass.id]
     );
 
-    // Insert gate log
+    // Insert into pass_scans
     await db.query(
-        `INSERT INTO gate_logs (pass_id, student_id, action_type, scanned_by, scan_time, gate_location, remarks)
-         VALUES (?, ?, 'EXIT', ?, ?, ?, ?)`,
+        `INSERT INTO pass_scans (pass_id, student_id, watchman_id, scan_type, scan_time, gate_location, remarks)
+         VALUES (?, ?, ?, 'EXIT', ?, ?, ?)`,
         [pass.id, pass.student_id, watchmanId, nowFormatted, gateLocation || null, remarks || null]
     );
 
-    logger.info(`Scan recorded: EXIT for student ${pass.roll_number}, pass ${pass.id} by watchman ${watchmanId}`);
+    const duration = Date.now() - startTime;
+    logger.info(`Scan recorded: EXIT for student ${pass.roll_number}, pass ${pass.id} by watchman ${watchmanId} in ${duration}ms`);
 
     return {
         pass_id: pass.id,
@@ -219,6 +222,7 @@ const recordExitScan = async ({ identifier, watchmanId, gateLocation, remarks })
 // ── Entry scan ────────────────────────────────────────────────────────────────
 
 const recordEntryScan = async ({ identifier, watchmanId, gateLocation, remarks }) => {
+    const startTime = Date.now();
     const pass = await findPassForScan(identifier);
 
     if (!pass) {
@@ -246,14 +250,15 @@ const recordEntryScan = async ({ identifier, watchmanId, gateLocation, remarks }
         [newStatus, nowFormatted, lateMinutes, pass.id]
     );
 
-    // Insert gate log
+    // Insert into pass_scans
     await db.query(
-        `INSERT INTO gate_logs (pass_id, student_id, action_type, scanned_by, scan_time, gate_location, remarks, is_late, late_minutes)
-         VALUES (?, ?, 'ENTRY', ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO pass_scans (pass_id, student_id, watchman_id, scan_type, scan_time, gate_location, remarks, is_late, late_duration_minutes)
+         VALUES (?, ?, ?, 'ENTRY', ?, ?, ?, ?, ?)`,
         [pass.id, pass.student_id, watchmanId, nowFormatted, gateLocation || null, remarks || null, isLate, lateMinutes]
     );
 
-    logger.info(`Scan recorded: ENTRY for student ${pass.roll_number}, pass ${pass.id}, late=${isLate}, lateMinutes=${lateMinutes} by watchman ${watchmanId}`);
+    const duration = Date.now() - startTime;
+    logger.info(`Scan recorded: ENTRY for student ${pass.roll_number}, pass ${pass.id}, late=${isLate}, lateMinutes=${lateMinutes} by watchman ${watchmanId} in ${duration}ms`);
 
     return {
         pass_id: pass.id,
@@ -273,6 +278,7 @@ const recordEntryScan = async ({ identifier, watchmanId, gateLocation, remarks }
 
 const lookupByUSN = async (identifier) => {
     const cleanIdentifier = String(identifier).trim().toUpperCase();
+    const startTime = Date.now();
     logger.info(`Looking up student/pass for identifier: ${cleanIdentifier}`);
 
     // Try by USN / roll_number first
@@ -295,7 +301,8 @@ const lookupByUSN = async (identifier) => {
     );
 
     if (usnRows.length > 0) {
-        logger.info(`Lookup success: Student ${usnRows[0].student_name} found with active pass ${usnRows[0].pass_id}`);
+        const duration = Date.now() - startTime;
+        logger.info(`Lookup success: Student ${usnRows[0].student_name} found with active pass ${usnRows[0].pass_id} in ${duration}ms`);
         return usnRows[0];
     }
 
@@ -316,12 +323,14 @@ const lookupByUSN = async (identifier) => {
             [cleanIdentifier]
         );
         if (idRows.length > 0) {
-            logger.info(`Lookup success: Pass ID ${cleanIdentifier} found for student ${idRows[0].student_name}`);
+            const duration = Date.now() - startTime;
+            logger.info(`Lookup success: Pass ID ${cleanIdentifier} found for student ${idRows[0].student_name} in ${duration}ms`);
             return idRows[0];
         }
     }
 
-    logger.warn(`Lookup failed: No active pass found for identifier ${cleanIdentifier}`);
+    const duration = Date.now() - startTime;
+    logger.warn(`Lookup failed: No active pass found for identifier ${cleanIdentifier} in ${duration}ms`);
     return null;
 };
 
@@ -333,18 +342,18 @@ const getScanStatistics = async (filters = {}) => {
     let where = '1=1';
     const params = [];
 
-    if (watchmanId) { where += ' AND scanned_by = ?'; params.push(watchmanId); }
+    if (watchmanId) { where += ' AND watchman_id = ?'; params.push(watchmanId); }
     if (startDate) { where += ' AND DATE(scan_time) >= ?'; params.push(startDate); }
     if (endDate) { where += ' AND DATE(scan_time) <= ?'; params.push(endDate); }
 
     const [stats] = await db.query(
         `SELECT
             COUNT(*) as total_scans,
-            SUM(CASE WHEN action_type = 'EXIT' THEN 1 ELSE 0 END) as total_exits,
-            SUM(CASE WHEN action_type = 'ENTRY' THEN 1 ELSE 0 END) as total_entries,
+            SUM(CASE WHEN scan_type = 'EXIT' THEN 1 ELSE 0 END) as total_exits,
+            SUM(CASE WHEN scan_type = 'ENTRY' THEN 1 ELSE 0 END) as total_entries,
             SUM(CASE WHEN is_late = TRUE THEN 1 ELSE 0 END) as late_returns,
-            AVG(CASE WHEN is_late = TRUE THEN late_minutes ELSE NULL END) as avg_late_minutes
-         FROM gate_logs WHERE ${where}`,
+            AVG(CASE WHEN is_late = TRUE THEN late_duration_minutes ELSE NULL END) as avg_late_minutes
+         FROM pass_scans WHERE ${where}`,
         params
     );
 
@@ -355,14 +364,12 @@ const getScanStatistics = async (filters = {}) => {
 
 const getPassScanLogs = async (passId) => {
     const [logs] = await db.query(
-        `SELECT gl.*,
-                u.email as watchman_email,
-                st.first_name as watchman_first_name, st.last_name as watchman_last_name
-         FROM gate_logs gl
-         JOIN users u ON gl.scanned_by = u.id
-         LEFT JOIN staff st ON u.id = st.user_id
-         WHERE gl.pass_id = ?
-         ORDER BY gl.scan_time ASC`,
+        `SELECT ps.*, ps.scan_type as action_type,
+                u.email as watchman_email
+         FROM pass_scans ps
+         JOIN users u ON ps.watchman_id = u.id
+         WHERE ps.pass_id = ?
+         ORDER BY ps.scan_time ASC`,
         [passId]
     );
     return logs;
@@ -373,7 +380,8 @@ const getPassScanLogs = async (passId) => {
 const getOverduePasses = async () => {
     const [rows] = await db.query(
         `SELECT p.id, p.student_id, p.to_datetime, p.exit_scan_at,
-                s.usn as roll_number, s.full_name as first_name, '' as last_name, s.mobile as phone,
+                s.usn as roll_number, s.full_name as student_name, 
+                s.full_name as first_name, '' as last_name, s.mobile as phone,
                 pt.name as pass_type_name,
                 TIMESTAMPDIFF(MINUTE, p.to_datetime, NOW()) as overdue_minutes
          FROM passes p

@@ -71,12 +71,20 @@ const ScanPanel = ({ onSuccess }) => {
     const handleLookup = async (idOrUsn) => {
         const identifier = idOrUsn || input.trim();
         if (!identifier) { toast.error('Enter USN or Pass ID'); return; }
+
+        const startTime = performance.now();
+        console.log(`[Scanner] Lookup API start for: ${identifier}`);
+
         setLoading(true);
         try {
             const res = await api.get(`/scan/lookup/${identifier}`);
+            const endTime = performance.now();
+            console.log(`[Scanner] Lookup API finish. Time taken: ${(endTime - startTime).toFixed(2)}ms`);
+
             setPreview(res.data.data);
             if (idOrUsn) setInput(identifier);
         } catch (err) {
+            console.error(`[Scanner] Lookup API error:`, err);
             toast.error(err.response?.data?.message || 'Pass not found');
             setPreview(null);
         } finally {
@@ -85,18 +93,34 @@ const ScanPanel = ({ onSuccess }) => {
     };
 
     const startScanner = () => {
+        const cameraStartTime = performance.now();
+        console.log(`[Scanner] Camera startup initiated...`);
+
         setShowScanner(true);
         setPreview(null);
         setTimeout(() => {
             const html5QrCode = new Html5Qrcode("reader");
             scannerRef.current = html5QrCode;
-            const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+
+            // Optimized configuration
+            const config = {
+                fps: 30, // Increased for faster detection
+                qrbox: { width: 300, height: 300 }, // Larger box for easier alignment
+                aspectRatio: 1.0,
+                disableFlip: true, // Faster processing for rear camera
+                experimentalFeatures: {
+                    useBarCodeDetectorIfSupported: true // Uses native browser API if available (fastest)
+                }
+            };
 
             html5QrCode.start(
                 { facingMode: "environment" },
                 config,
                 (decodedText) => {
-                    // NEW: Treat scanned value directly as USN/Identifier
+                    const detectionTime = performance.now();
+                    console.log(`[Scanner] QR detected: ${decodedText}`);
+                    console.log(`[Scanner] Detection time from start: ${(detectionTime - cameraStartTime).toFixed(2)}ms`);
+
                     if (decodedText) {
                         stopScanner();
                         handleLookup(decodedText.trim());
@@ -107,8 +131,10 @@ const ScanPanel = ({ onSuccess }) => {
                 (errorMessage) => {
                     // ignore errors
                 }
-            ).catch((err) => {
-                console.error("Scanner start error:", err);
+            ).then(() => {
+                console.log(`[Scanner] Camera started successfully in ${(performance.now() - cameraStartTime).toFixed(2)}ms`);
+            }).catch((err) => {
+                console.error("[Scanner] Camera startup error:", err);
                 toast.error("Camera access failed");
                 setShowScanner(false);
             });
