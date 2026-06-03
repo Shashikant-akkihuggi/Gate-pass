@@ -368,20 +368,32 @@ const getPassStats = async (req, res) => {
             [studentId]
         );
 
-        // Get max passes per month
+        // Get max passes per month from system_settings
+        // The table schema has columns for different pass types, not a generic key-value store
         const [settings] = await db.query(
-            "SELECT setting_value FROM system_settings WHERE setting_key = 'max_passes_per_month'"
+            "SELECT max_half_day_per_month, max_home_pass_per_month FROM system_settings LIMIT 1"
         );
-        const maxPasses = settings.length > 0 ? parseInt(settings[0].setting_value) : 4;
+        
+        // Use a reasonable default or the sum of limits if available
+        const maxPasses = settings.length > 0 
+            ? (parseInt(settings[0].max_half_day_per_month) + parseInt(settings[0].max_home_pass_per_month)) 
+            : 6;
 
         res.status(200).json({
             success: true,
             data: {
-                ...stats[0],
+                total: stats[0].total || 0,
+                pending: stats[0].pending || 0,
+                approved: stats[0].approved || 0,
+                outside: stats[0].outside || 0,
+                completed: stats[0].completed || 0,
+                completed_late: stats[0].completed_late || 0,
+                rejected: stats[0].rejected || 0,
+                cancelled: stats[0].cancelled || 0,
                 monthly_limit: {
-                    currentCount: monthlyCount[0].count,
+                    currentCount: monthlyCount[0].count || 0,
                     maxPasses,
-                    remaining: maxPasses - monthlyCount[0].count
+                    remaining: Math.max(0, maxPasses - (monthlyCount[0].count || 0))
                 }
             }
         });
