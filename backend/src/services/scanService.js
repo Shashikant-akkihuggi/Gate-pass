@@ -23,7 +23,12 @@ const ACTIVE_SCAN_STATUS_SQL = toSqlStatusList(ACTIVE_SCAN_STATUSES);
  * Returns the pass row or null.
  */
 const findPassForScan = async (identifier) => {
-    // 1. Try by USN / roll_number — return the most recent active pass (FINAL_APPROVED or EXITED)
+    const cleanIdentifier = String(identifier).trim().toUpperCase();
+
+    // 1. Log the incoming scan request
+    logger.info(`Processing scan for identifier: ${cleanIdentifier}`);
+
+    // 2. Try by USN / roll_number — return the most recent active pass (FINAL_APPROVED, APPROVED, or EXITED)
     const [usnRows] = await db.query(
         `SELECT p.*, s.usn as roll_number, s.full_name as student_name, s.id as student_user_id,
                 pt.name as pass_type_name
@@ -31,16 +36,20 @@ const findPassForScan = async (identifier) => {
          JOIN students s ON p.student_id = s.id
          JOIN pass_types pt ON p.pass_type_id = pt.id
          WHERE s.usn = ?
-           AND p.current_status IN (${ACTIVE_SCAN_STATUS_SQL})
+           AND p.current_status IN ('FINAL_APPROVED', 'APPROVED', 'EXITED', 'OUTSIDE', 'EXTENDED', 'EXTENSION_PENDING')
          ORDER BY p.id DESC
          LIMIT 1`,
-        [String(identifier).toUpperCase()]
+        [cleanIdentifier]
     );
 
-    if (usnRows.length > 0) return usnRows[0];
+    if (usnRows.length > 0) {
+        const pass = usnRows[0];
+        logger.info(`Student found: ${pass.student_name} (${pass.roll_number}). Active pass found: ${pass.id} (${pass.current_status})`);
+        return pass;
+    }
 
-    // 2. Fallback: Try numeric pass ID
-    if (/^\d+$/.test(String(identifier))) {
+    // 3. Fallback: Try numeric pass ID
+    if (/^\d+$/.test(cleanIdentifier)) {
         const [idRows] = await db.query(
             `SELECT p.*, s.usn as roll_number, s.full_name as student_name, s.id as student_user_id,
                     pt.name as pass_type_name
@@ -48,11 +57,23 @@ const findPassForScan = async (identifier) => {
              JOIN students s ON p.student_id = s.id
              JOIN pass_types pt ON p.pass_type_id = pt.id
              WHERE p.id = ?`,
-            [identifier]
+            [cleanIdentifier]
         );
-        if (idRows.length > 0) return idRows[0];
+        if (idRows.length > 0) {
+            const pass = idRows[0];
+            logger.info(`Pass found by ID: ${pass.id}. Student: ${pass.student_name} (${pass.roll_number})`);
+            return pass;
+        }
     }
 
+    // 4. Check if student exists at all for better error reporting
+    const [students] = await db.query('SELECT id FROM students WHERE usn = ?', [cleanIdentifier]);
+    if (students.length === 0) {
+        logger.warn(`Scan failed: USN ${cleanIdentifier} not found in database`);
+        throw new Error('STUDENT_NOT_FOUND');
+    }
+
+    logger.warn(`Scan failed: No active pass found for USN ${cleanIdentifier}`);
     return null;
 };
 
@@ -153,35 +174,43 @@ const recordExitScan = async ({ identifier, watchmanId, gateLocation, remarks })
         throw new Error('PASS_NOT_FOUND');
     }
 
+    // Check if pass is expired (for EXIT scan)
+    const now = new Date();
+    const toDatetime = new Date(pass.to_datetime);
+    if (now > toDatetime) {
+        logger.warn(`Exit failed: Pass ${pass.id} expired at ${pass.to_datetime}`);
+        throw new Error('PASS_EXPIRED');
+    }
+
     if (!PENDING_EXIT_STATUSES.includes(pass.current_status)) {
         if (OUTSIDE_STATUSES.includes(pass.current_status)) throw new Error('ALREADY_EXITED');
         if (COMPLETED_STATUSES.includes(pass.current_status)) throw new Error('PASS_COMPLETED');
         throw new Error('PASS_NOT_APPROVED');
     }
 
-    const now = formatMySQLDateTime(new Date());
+    const nowFormatted = formatMySQLDateTime(now);
 
     // Update pass
     await db.query(
         `UPDATE passes SET current_status = 'EXITED', exit_scan_at = ?, updated_at = NOW() WHERE id = ?`,
-        [now, pass.id]
+        [nowFormatted, pass.id]
     );
 
     // Insert gate log
     await db.query(
         `INSERT INTO gate_logs (pass_id, student_id, action_type, scanned_by, scan_time, gate_location, remarks)
          VALUES (?, ?, 'EXIT', ?, ?, ?, ?)`,
-        [pass.id, pass.student_id, watchmanId, now, gateLocation || null, remarks || null]
+        [pass.id, pass.student_id, watchmanId, nowFormatted, gateLocation || null, remarks || null]
     );
 
-    logger.info(`EXIT recorded: pass ${pass.id}, student ${pass.roll_number}, by watchman ${watchmanId}`);
+    logger.info(`Scan recorded: EXIT for student ${pass.roll_number}, pass ${pass.id} by watchman ${watchmanId}`);
 
     return {
         pass_id: pass.id,
         student_name: pass.student_name,
         roll_number: pass.roll_number,
         pass_type_name: pass.pass_type_name,
-        exit_time: now,
+        exit_time: nowFormatted,
         to_datetime: pass.to_datetime,
         status: 'EXITED'
     };
@@ -224,7 +253,7 @@ const recordEntryScan = async ({ identifier, watchmanId, gateLocation, remarks }
         [pass.id, pass.student_id, watchmanId, nowFormatted, gateLocation || null, remarks || null, isLate, lateMinutes]
     );
 
-    logger.info(`ENTRY recorded: pass ${pass.id}, student ${pass.roll_number}, late=${isLate}, lateMinutes=${lateMinutes}`);
+    logger.info(`Scan recorded: ENTRY for student ${pass.roll_number}, pass ${pass.id}, late=${isLate}, lateMinutes=${lateMinutes} by watchman ${watchmanId}`);
 
     return {
         pass_id: pass.id,
@@ -243,27 +272,11 @@ const recordEntryScan = async ({ identifier, watchmanId, gateLocation, remarks }
 // ── Lookup by USN (for manual entry) ─────────────────────────────────────────
 
 const lookupByUSN = async (identifier) => {
-    // Try numeric pass ID first
-    if (/^\d+$/.test(String(identifier))) {
-        const [rows] = await db.query(
-            `SELECT p.id as pass_id, p.current_status, p.from_datetime, p.to_datetime,
-                    p.destination, p.exit_scan_at, p.return_scan_at,
-                    COALESCE(p.late_minutes, 0) as late_minutes,
-                    p.qr_code,
-                    s.usn as roll_number, s.full_name as student_name, '' as room_number,
-                    pt.name as pass_type_name,
-                    'Hostel' as hostel_block
-             FROM passes p
-             JOIN students s ON p.student_id = s.id
-             JOIN pass_types pt ON p.pass_type_id = pt.id
-             WHERE p.id = ?`,
-            [identifier]
-        );
-        if (rows.length > 0) return rows[0];
-    }
+    const cleanIdentifier = String(identifier).trim().toUpperCase();
+    logger.info(`Looking up student/pass for identifier: ${cleanIdentifier}`);
 
-    // Try by USN / roll_number
-    const [rows] = await db.query(
+    // Try by USN / roll_number first
+    const [usnRows] = await db.query(
         `SELECT p.id as pass_id, p.current_status, p.from_datetime, p.to_datetime,
                 p.destination, p.exit_scan_at, p.return_scan_at,
                 COALESCE(p.late_minutes, 0) as late_minutes,
@@ -275,13 +288,41 @@ const lookupByUSN = async (identifier) => {
          JOIN students s ON p.student_id = s.id
          JOIN pass_types pt ON p.pass_type_id = pt.id
          WHERE s.usn = ?
-           AND p.current_status IN (${ACTIVE_SCAN_STATUS_SQL})
-         ORDER BY p.created_at DESC
+           AND p.current_status IN ('FINAL_APPROVED', 'APPROVED', 'EXITED', 'OUTSIDE', 'EXTENDED', 'EXTENSION_PENDING')
+         ORDER BY p.id DESC
          LIMIT 1`,
-        [String(identifier).toUpperCase()]
+        [cleanIdentifier]
     );
 
-    return rows.length > 0 ? rows[0] : null;
+    if (usnRows.length > 0) {
+        logger.info(`Lookup success: Student ${usnRows[0].student_name} found with active pass ${usnRows[0].pass_id}`);
+        return usnRows[0];
+    }
+
+    // Fallback: Try numeric pass ID
+    if (/^\d+$/.test(cleanIdentifier)) {
+        const [idRows] = await db.query(
+            `SELECT p.id as pass_id, p.current_status, p.from_datetime, p.to_datetime,
+                    p.destination, p.exit_scan_at, p.return_scan_at,
+                    COALESCE(p.late_minutes, 0) as late_minutes,
+                    p.qr_code,
+                    s.usn as roll_number, s.full_name as student_name, '' as room_number,
+                    pt.name as pass_type_name,
+                    'Hostel' as hostel_block
+             FROM passes p
+             JOIN students s ON p.student_id = s.id
+             JOIN pass_types pt ON p.pass_type_id = pt.id
+             WHERE p.id = ?`,
+            [cleanIdentifier]
+        );
+        if (idRows.length > 0) {
+            logger.info(`Lookup success: Pass ID ${cleanIdentifier} found for student ${idRows[0].student_name}`);
+            return idRows[0];
+        }
+    }
+
+    logger.warn(`Lookup failed: No active pass found for identifier ${cleanIdentifier}`);
+    return null;
 };
 
 // ── Scan statistics ───────────────────────────────────────────────────────────

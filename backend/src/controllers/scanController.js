@@ -71,37 +71,33 @@ const recordExit = async (req, res) => {
         const { qrData, identifier, usn, passId, gateLocation, remarks } = req.body;
         const watchmanId = req.user.id;
 
-        // Determine identifier: identifier, QR payload (usn then passId), explicit passId, or USN
-        let scanIdentifier;
-        if (identifier) {
-            scanIdentifier = identifier;
-        } else if (qrData) {
-            try {
-                const payload = JSON.parse(qrData);
-                scanIdentifier = payload.usn || payload.passId;
-            } catch {
-                scanIdentifier = qrData;
-            }
-        } else if (passId) {
-            scanIdentifier = passId;
-        } else if (usn) {
-            scanIdentifier = usn;
-        } else {
-            return res.status(400).json({ success: false, message: 'Provide identifier, qrData, passId, or usn' });
+        // Simplify identifier: use the first available source
+        // Since the new QR only contains USN, qrData will be the USN
+        const scanIdentifier = identifier || qrData || usn || passId;
+
+        if (!scanIdentifier) {
+            return res.status(400).json({ success: false, message: 'Provide a valid USN or Pass ID' });
         }
 
-        const result = await scanService.recordExitScan({ identifier: scanIdentifier, watchmanId, gateLocation, remarks });
+        const result = await scanService.recordExitScan({
+            identifier: scanIdentifier,
+            watchmanId,
+            gateLocation,
+            remarks
+        });
 
-        logger.info(`Exit recorded: pass ${result.pass_id} by watchman ${watchmanId}`);
         res.status(201).json({ success: true, message: 'Student Exit Recorded Successfully', data: result });
     } catch (error) {
         logger.error('recordExit error:', error);
         const msgMap = {
-            PASS_NOT_FOUND: [404, 'Pass not found'],
-            PASS_NOT_APPROVED: [400, 'Pass is not approved for exit'],
-            ALREADY_EXITED: [409, 'Exit already recorded for this pass'],
-            PASS_COMPLETED: [409, 'This pass has already been completed'],
+            STUDENT_NOT_FOUND: [404, 'Student with this USN not found'],
+            PASS_NOT_FOUND: [404, 'No active approved pass found for this student'],
+            PASS_EXPIRED: [400, 'This pass has expired and cannot be used for exit'],
+            ALREADY_EXITED: [400, 'Student has already exited'],
+            PASS_COMPLETED: [400, 'This pass has already been completed'],
+            PASS_NOT_APPROVED: [400, 'Pass is not yet approved']
         };
+
         const [status, message] = msgMap[error.message] || [500, error.message];
         res.status(status).json({ success: false, message });
     }
@@ -114,40 +110,31 @@ const recordEntry = async (req, res) => {
         const { qrData, identifier, usn, passId, gateLocation, remarks } = req.body;
         const watchmanId = req.user.id;
 
-        let scanIdentifier;
-        if (identifier) {
-            scanIdentifier = identifier;
-        } else if (qrData) {
-            try {
-                const payload = JSON.parse(qrData);
-                scanIdentifier = payload.usn || payload.passId;
-            } catch {
-                scanIdentifier = qrData;
-            }
-        } else if (passId) {
-            scanIdentifier = passId;
-        } else if (usn) {
-            scanIdentifier = usn;
-        } else {
-            return res.status(400).json({ success: false, message: 'Provide identifier, qrData, passId, or usn' });
+        // Simplify identifier: use the first available source
+        const scanIdentifier = identifier || qrData || usn || passId;
+
+        if (!scanIdentifier) {
+            return res.status(400).json({ success: false, message: 'Provide a valid USN or Pass ID' });
         }
 
-        const result = await scanService.recordEntryScan({ identifier: scanIdentifier, watchmanId, gateLocation, remarks });
+        const result = await scanService.recordEntryScan({
+            identifier: scanIdentifier,
+            watchmanId,
+            gateLocation,
+            remarks
+        });
 
-        logger.info(`Entry recorded: pass ${result.pass_id}, late=${result.is_late}`);
-        const message = result.is_late
-            ? `Student Entry Recorded — Late by ${result.late_minutes} minute(s)`
-            : 'Student Entry Recorded Successfully';
-
-        res.status(201).json({ success: true, message, data: result });
+        res.status(201).json({ success: true, message: 'Student Entry Recorded Successfully', data: result });
     } catch (error) {
         logger.error('recordEntry error:', error);
         const msgMap = {
-            PASS_NOT_FOUND: [404, 'Pass not found'],
-            NOT_EXITED_YET: [400, 'Student has not exited yet. Record exit first.'],
-            PASS_COMPLETED: [409, 'This pass has already been completed'],
-            INVALID_STATUS_FOR_ENTRY: [400, 'Pass is not in a valid state for entry scan'],
+            STUDENT_NOT_FOUND: [404, 'Student with this USN not found'],
+            PASS_NOT_FOUND: [404, 'No active pass found for this student'],
+            NOT_EXITED_YET: [400, 'Student has not recorded an exit scan yet'],
+            PASS_COMPLETED: [400, 'This pass has already been completed'],
+            INVALID_STATUS_FOR_ENTRY: [400, 'Pass status is not valid for entry']
         };
+
         const [status, message] = msgMap[error.message] || [500, error.message];
         res.status(status).json({ success: false, message });
     }

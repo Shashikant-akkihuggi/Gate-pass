@@ -96,20 +96,12 @@ const ScanPanel = ({ onSuccess }) => {
                 { facingMode: "environment" },
                 config,
                 (decodedText) => {
-                    try {
-                        const data = JSON.parse(decodedText);
-                        // Prioritize USN from payload, fallback to passId
-                        const identifier = data.usn || data.rollNumber || data.passId;
-                        if (identifier) {
-                            stopScanner();
-                            handleLookup(identifier);
-                        } else {
-                            toast.error("Invalid QR Code: Missing USN or Pass ID");
-                        }
-                    } catch (e) {
-                        // If not JSON, try as raw ID/USN
+                    // NEW: Treat scanned value directly as USN/Identifier
+                    if (decodedText) {
                         stopScanner();
-                        handleLookup(decodedText);
+                        handleLookup(decodedText.trim());
+                    } else {
+                        toast.error("Invalid QR Code: Scanned text is empty");
                     }
                 },
                 (errorMessage) => {

@@ -1,17 +1,6 @@
 const QRCode = require('qrcode');
-const crypto = require('crypto');
 const { pool: db } = require('../config/database');
 const logger = require('../utils/logger');
-
-const QR_READY_STATUSES = new Set(['FINAL_APPROVED', 'APPROVED', 'EXITED', 'OUTSIDE']);
-
-const getQrSigningSecret = () => {
-    if (!process.env.JWT_ACCESS_SECRET) {
-        throw new Error('JWT_ACCESS_SECRET is required for QR signing');
-    }
-
-    return process.env.JWT_ACCESS_SECRET;
-};
 
 /**
  * Generate QR code for pass - returns the signature hash for DB storage
@@ -23,11 +12,9 @@ const generatePassQRCode = async (passId) => {
     try {
         // Get pass details
         const [passes] = await db.query(
-            `SELECT p.id, p.student_id, p.from_datetime, p.to_datetime,
-              s.usn, s.full_name, pt.code as pass_type
+            `SELECT p.id, s.usn
        FROM passes p
        JOIN students s ON p.student_id = s.id
-       JOIN pass_types pt ON p.pass_type_id = pt.id
        WHERE p.id = ?`,
             [passId]
         );
@@ -38,26 +25,8 @@ const generatePassQRCode = async (passId) => {
 
         const pass = passes[0];
 
-        // Generate HMAC signature for tamper detection (this is what we store in DB)
-        const secret = getQrSigningSecret();
-        const dataToSign = `${pass.id}|${pass.usn}|${pass.from_datetime}|${pass.to_datetime}`;
-        const signature = crypto
-            .createHmac('sha256', secret)
-            .update(dataToSign)
-            .digest('hex');
-
-        // Create QR code payload (embedded in the QR image)
-        const qrPayload = {
-            usn: pass.usn,
-            studentName: pass.full_name,
-            passId: pass.id,
-            passType: pass.pass_type,
-            validFrom: pass.from_datetime,
-            validTo: pass.to_datetime,
-            signature
-        };
-
-        const qrData = JSON.stringify(qrPayload);
+        // NEW: QR code contains ONLY the USN
+        const qrData = pass.usn;
 
         // Generate QR code as data URL (for display only, not stored in DB)
         const qrCodeDataURL = await QRCode.toDataURL(qrData, {
@@ -66,10 +35,12 @@ const generatePassQRCode = async (passId) => {
             margin: 2
         });
 
-        logger.info(`QR code generated for pass: ${passId}, hash length: ${signature.length}`);
+        logger.info(`QR code generated for pass: ${passId} using USN: ${pass.usn}`);
 
-        // Return both - hash goes to DB, dataURL goes to frontend
-        return { hash: signature, dataURL: qrCodeDataURL };
+        // Return dataURL for frontend. 
+        // Hash is kept for compatibility with current DB schema if it expects a return value, 
+        // though it's no longer used for verification logic in this simplified model.
+        return { hash: pass.usn, dataURL: qrCodeDataURL };
     } catch (error) {
         logger.error('QR code generation error:', error);
         throw error;
@@ -77,73 +48,45 @@ const generatePassQRCode = async (passId) => {
 };
 
 /**
- * Validate QR code
- * @param {string} qrData - QR code data (JSON string)
+ * Validate QR code - Simplified to lookup by USN
+ * @param {string} usn - The scanned USN string
  * @returns {Promise<Object>} Validation result
  */
-const validateQRCode = async (qrData) => {
+const validateQRCode = async (usn) => {
     try {
-        // Parse QR data
-        let qrPayload;
-        try {
-            qrPayload = JSON.parse(qrData);
-        } catch (error) {
+        if (!usn || typeof usn !== 'string') {
             return {
                 isValid: false,
-                message: 'Invalid QR code format'
+                message: 'Invalid USN provided'
             };
         }
 
-        // Verify required fields
-        if (!qrPayload.usn || !qrPayload.passId || !qrPayload.signature) {
-            return {
-                isValid: false,
-                message: 'QR code missing required fields'
-            };
-        }
+        const cleanUsn = usn.trim().toUpperCase();
 
-        // Verify signature
-        const secret = getQrSigningSecret();
-        const dataToSign = `${qrPayload.passId}|${qrPayload.usn}|${qrPayload.validFrom}|${qrPayload.validTo}`;
-        const expectedSignature = crypto
-            .createHmac('sha256', secret)
-            .update(dataToSign)
-            .digest('hex');
-
-        if (qrPayload.signature !== expectedSignature) {
-            return {
-                isValid: false,
-                message: 'QR code signature verification failed. Possible tampering detected.'
-            };
-        }
-
-        // Get pass from database
+        // Get student and their most recent active pass
         const [passes] = await db.query(
             `SELECT p.*, s.usn, s.full_name,
               pt.name as pass_type_name
        FROM passes p
        JOIN students s ON p.student_id = s.id
        JOIN pass_types pt ON p.pass_type_id = pt.id
-       WHERE p.id = ?`,
-            [qrPayload.passId]
+       WHERE s.usn = ?
+         AND p.current_status IN ('FINAL_APPROVED', 'APPROVED', 'EXITED', 'OUTSIDE', 'EXTENDED', 'EXTENSION_PENDING')
+       ORDER BY p.id DESC
+       LIMIT 1`,
+            [cleanUsn]
         );
 
         if (passes.length === 0) {
-            return {
-                isValid: false,
-                message: 'Pass not found in system'
-            };
+            // Check if student even exists
+            const [students] = await db.query('SELECT id FROM students WHERE usn = ?', [cleanUsn]);
+            if (students.length === 0) {
+                return { isValid: false, message: `Student with USN ${cleanUsn} not found` };
+            }
+            return { isValid: false, message: 'No active approved pass found for this student' };
         }
 
         const pass = passes[0];
-
-        // Allow QR validation for passes that are ready to exit or already outside.
-        if (!QR_READY_STATUSES.has(pass.current_status)) {
-            return {
-                isValid: false,
-                message: `Pass is ${pass.current_status.toLowerCase()}. Only approved passes can be used.`
-            };
-        }
 
         // Check if pass is within valid time
         const now = new Date();
@@ -153,24 +96,26 @@ const validateQRCode = async (qrData) => {
         if (now < validFrom) {
             return {
                 isValid: false,
-                message: 'Pass is not yet valid. Valid from: ' + validFrom.toLocaleString()
+                message: `Pass not yet valid. Starts at: ${validFrom.toLocaleString()}`
             };
         }
 
         if (now > validTo) {
             return {
                 isValid: false,
-                message: 'Pass has expired. Valid until: ' + validTo.toLocaleString()
+                message: `Pass has expired. Expired at: ${validTo.toLocaleString()}`
             };
         }
 
+        logger.info(`QR lookup successful for USN: ${cleanUsn}, found Pass ID: ${pass.id}`);
+
         return {
             isValid: true,
-            message: 'QR code is valid',
+            message: 'Active pass found',
             pass: pass
         };
     } catch (error) {
-        logger.error('QR code validation error:', error);
+        logger.error('QR validation error:', error);
         return {
             isValid: false,
             message: 'Error validating QR code'
@@ -186,11 +131,9 @@ const validateQRCode = async (qrData) => {
 const generateQRCodeBuffer = async (passId) => {
     try {
         const [passes] = await db.query(
-            `SELECT p.id, p.student_id, p.from_datetime, p.to_datetime,
-              s.usn, s.full_name, pt.code as pass_type
+            `SELECT p.id, s.usn
        FROM passes p
        JOIN students s ON p.student_id = s.id
-       JOIN pass_types pt ON p.pass_type_id = pt.id
        WHERE p.id = ?`,
             [passId]
         );
@@ -201,24 +144,8 @@ const generateQRCodeBuffer = async (passId) => {
 
         const pass = passes[0];
 
-        const secret = getQrSigningSecret();
-        const dataToSign = `${pass.id}|${pass.usn}|${pass.from_datetime}|${pass.to_datetime}`;
-        const signature = crypto
-            .createHmac('sha256', secret)
-            .update(dataToSign)
-            .digest('hex');
-
-        const qrPayload = {
-            usn: pass.usn,
-            studentName: pass.full_name,
-            passId: pass.id,
-            passType: pass.pass_type,
-            validFrom: pass.from_datetime,
-            validTo: pass.to_datetime,
-            signature
-        };
-
-        const qrData = JSON.stringify(qrPayload);
+        // NEW: QR code contains ONLY the USN
+        const qrData = pass.usn;
 
         const qrCodeBuffer = await QRCode.toBuffer(qrData, {
             errorCorrectionLevel: 'M',
@@ -226,6 +153,7 @@ const generateQRCodeBuffer = async (passId) => {
             margin: 2
         });
 
+        logger.info(`QR code buffer generated for pass: ${passId} using USN: ${pass.usn}`);
         return qrCodeBuffer;
     } catch (error) {
         logger.error('QR code buffer generation error:', error);
@@ -255,58 +183,9 @@ const generateAndStoreQRCode = async (passId) => {
     }
 };
 
-/**
- * Verify QR code hasn't been tampered with
- * @param {Object} qrPayload - Parsed QR payload
- * @returns {boolean} True if signature is valid
- */
-const verifyQRSignature = (qrPayload) => {
-    const secret = getQrSigningSecret();
-    const dataToSign = `${qrPayload.passId}|${qrPayload.usn}|${qrPayload.validFrom}|${qrPayload.validTo}`;
-    const expectedSignature = crypto
-        .createHmac('sha256', secret)
-        .update(dataToSign)
-        .digest('hex');
-
-    return qrPayload.signature === expectedSignature;
-};
-
-/**
- * Check if QR code is within time validity
- * @param {Date} validFrom - Valid from datetime
- * @param {Date} validTo - Valid to datetime
- * @returns {Object} Validity status
- */
-const checkTimeValidity = (validFrom, validTo) => {
-    const now = new Date();
-    const from = new Date(validFrom);
-    const to = new Date(validTo);
-
-    if (now < from) {
-        return {
-            isValid: false,
-            message: `Pass is not yet valid. Valid from: ${from.toLocaleString()}`
-        };
-    }
-
-    if (now > to) {
-        return {
-            isValid: false,
-            message: `Pass has expired. Valid until: ${to.toLocaleString()}`
-        };
-    }
-
-    return {
-        isValid: true,
-        message: 'Pass is within valid time period'
-    };
-};
-
 module.exports = {
     generatePassQRCode,
     validateQRCode,
     generateQRCodeBuffer,
-    generateAndStoreQRCode,
-    verifyQRSignature,
-    checkTimeValidity
+    generateAndStoreQRCode
 };
