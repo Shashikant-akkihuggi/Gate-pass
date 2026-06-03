@@ -384,7 +384,7 @@ const cancelPass = async (req, res) => {
 const getPassStats = async (req, res) => {
     try {
         const userId = req.user.id;
-        console.log(`DEBUG: Fetching stats for user_id: ${userId}`);
+        console.log('DEBUG: studentId (from userId)', userId);
 
         // Get student_id from students table
         const [studentRows] = await db.query('SELECT id FROM students WHERE user_id = ?', [userId]);
@@ -393,17 +393,14 @@ const getPassStats = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Student profile not found' });
         }
         const studentId = studentRows[0].id;
-        console.log(`DEBUG: Resolved student_id: ${studentId}`);
+        console.log('DEBUG: Resolved studentId', studentId);
 
-        // Get statistics
+        // Get statistics using exact statuses and categories
         const [stats] = await db.query(
             `SELECT 
                 COUNT(*) as total_passes,
-                SUM(CASE WHEN current_status IN ('IN_APPROVAL', 'PENDING_CLASS_COORDINATOR', 'PENDING_HOSTEL_OFFICE') THEN 1 ELSE 0 END) as in_approval,
-                SUM(CASE WHEN current_status IN ('FINAL_APPROVED', 'APPROVED') THEN 1 ELSE 0 END) as approved,
-                SUM(CASE WHEN current_status IN ('EXITED', 'OUTSIDE') THEN 1 ELSE 0 END) as outside,
-                SUM(CASE WHEN current_status IN ('RETURNED', 'COMPLETED') THEN 1 ELSE 0 END) as completed,
-                SUM(CASE WHEN current_status IN ('LATE_RETURN', 'COMPLETED_LATE') THEN 1 ELSE 0 END) as completed_late,
+                SUM(CASE WHEN current_status IN ('PENDING', 'IN_APPROVAL', 'PENDING_CLASS_COORDINATOR', 'PENDING_HOSTEL_OFFICE', 'PENDING_CHIEF_WARDEN', 'EXTENSION_PENDING') THEN 1 ELSE 0 END) as in_approval,
+                SUM(CASE WHEN current_status IN ('FINAL_APPROVED', 'APPROVED', 'EXITED', 'OUTSIDE', 'RETURNED', 'COMPLETED', 'LATE_RETURN', 'COMPLETED_LATE', 'EXTENDED') THEN 1 ELSE 0 END) as approved,
                 SUM(CASE WHEN current_status = 'REJECTED' THEN 1 ELSE 0 END) as rejected,
                 SUM(CASE WHEN current_status = 'CANCELLED' THEN 1 ELSE 0 END) as cancelled
              FROM passes
@@ -411,7 +408,9 @@ const getPassStats = async (req, res) => {
             [studentId]
         );
 
-        // Get monthly counts by type
+        console.log('DEBUG: Raw stats from DB', stats[0]);
+
+        // Get monthly counts by type for approved/active passes
         const [monthlyTypeCounts] = await db.query(
             `SELECT pt.code, COUNT(*) as count
              FROM passes p
@@ -424,53 +423,48 @@ const getPassStats = async (req, res) => {
             [studentId]
         );
 
-        console.log('DEBUG: Monthly type counts:', JSON.stringify(monthlyTypeCounts));
-
-        // Get max passes per month from system_settings
-        const [settings] = await db.query(
+        // Get system settings
+        const [settingsRows] = await db.query(
             "SELECT max_half_day_per_month, max_home_pass_per_month, max_half_day_hours, max_home_pass_days FROM system_settings LIMIT 1"
         );
-
-        const sys = settings[0] || {
+        const settings = settingsRows[0] || {
             max_half_day_per_month: 4,
             max_home_pass_per_month: 2,
             max_half_day_hours: 4,
             max_home_pass_days: 3
         };
-        console.log('DEBUG: Loaded system settings:', JSON.stringify(sys));
+
+        console.log('DEBUG: settings', settings);
 
         const halfDayCount = monthlyTypeCounts.find(c => c.code === 'HALF_DAY')?.count || 0;
         const homePassCount = monthlyTypeCounts.find(c => c.code === 'HOME_PASS')?.count || 0;
 
         const responseData = {
-            total_passes: stats[0].total_passes || 0,
-            in_approval: stats[0].in_approval || 0,
-            approved: stats[0].approved || 0,
-            outside: stats[0].outside || 0,
-            completed: stats[0].completed || 0,
-            completed_late: stats[0].completed_late || 0,
-            rejected: stats[0].rejected || 0,
-            cancelled: stats[0].cancelled || 0,
+            total_passes: parseInt(stats[0].total_passes) || 0,
+            in_approval: parseInt(stats[0].in_approval) || 0,
+            approved: parseInt(stats[0].approved) || 0,
+            rejected: parseInt(stats[0].rejected) || 0,
+            cancelled: parseInt(stats[0].cancelled) || 0,
             half_day: {
-                limit: sys.max_half_day_per_month,
+                limit: settings.max_half_day_per_month,
                 used: halfDayCount,
-                remaining: Math.max(0, sys.max_half_day_per_month - halfDayCount),
-                max_duration: sys.max_half_day_hours
+                remaining: Math.max(0, settings.max_half_day_per_month - halfDayCount),
+                max_duration: settings.max_half_day_hours
             },
             home_pass: {
-                limit: sys.max_home_pass_per_month,
+                limit: settings.max_home_pass_per_month,
                 used: homePassCount,
-                remaining: Math.max(0, sys.max_home_pass_per_month - homePassCount),
-                max_duration_days: sys.max_home_pass_days
+                remaining: Math.max(0, settings.max_home_pass_per_month - homePassCount),
+                max_duration_days: settings.max_home_pass_days
             },
-            // Flat fields as requested in step 5
-            halfDayMonthlyLimit: sys.max_half_day_per_month,
-            halfDayMaxHours: sys.max_half_day_hours,
-            homePassMonthlyLimit: sys.max_home_pass_per_month,
-            homePassMaxDays: sys.max_home_pass_days
+            // Flat fields for compatibility
+            halfDayMonthlyLimit: settings.max_half_day_per_month,
+            halfDayMaxHours: settings.max_half_day_hours,
+            homePassMonthlyLimit: settings.max_home_pass_per_month,
+            homePassMaxDays: settings.max_home_pass_days
         };
 
-        console.log('DEBUG: Final calculated values:', JSON.stringify(responseData));
+        console.log('DEBUG: stats (final response)', responseData);
 
         res.status(200).json({
             success: true,
